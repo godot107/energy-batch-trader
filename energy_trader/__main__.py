@@ -18,9 +18,14 @@ from energy_trader.pipeline import run_pipeline
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="energy_trader", description=__doc__)
     parser.add_argument(
+        "--paper",
+        action="store_true",
+        help="Execute on Alpaca PAPER trading (no real money) — Phase 2.",
+    )
+    parser.add_argument(
         "--live",
         action="store_true",
-        help="Arm real order execution via the Robinhood MCP (default: dry-run).",
+        help="Arm REAL order execution via the Robinhood MCP — Phase 3.",
     )
     parser.add_argument(
         "--asset",
@@ -50,6 +55,9 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s  %(levelname)-7s %(name)s  %(message)s",
     )
 
+    if args.paper and args.live:
+        parser.error("--paper and --live are mutually exclusive.")
+
     settings = get_settings()
     if args.assets:
         settings.assets = args.assets
@@ -57,10 +65,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.backtest:
         return _run_backtest(settings, args.years)
 
-    result = run_pipeline(dry_run=not args.live, settings=settings)
+    if args.paper:
+        settings.broker = "alpaca_paper"
+    elif args.live:
+        settings.broker = "robinhood"
 
+    result = run_pipeline(dry_run=not (args.paper or args.live), settings=settings)
+
+    mode = "PAPER (alpaca)" if args.paper else "LIVE" if args.live else "DRY-RUN"
     print("\n=== EOD Pipeline Result ===")
-    print(f"mode: {'LIVE' if args.live else 'DRY-RUN'}")
+    print(f"mode: {mode}")
     print(result.summary())
     return 0
 

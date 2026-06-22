@@ -43,6 +43,10 @@ class Settings:
     extended_hours: bool = True
     default_notional: float = 100.0  # dollar size per order
 
+    # Execution target when not in dry-run:
+    #   "dry_run" (default) | "alpaca_paper" (Phase 2) | "robinhood" (Phase 3).
+    broker: str = field(default_factory=lambda: _env("EOD_BROKER", "dry_run"))
+
     # --- Robinhood official Agentic Trading MCP (Phase 2) -----------------
     rh_mcp_url: str = field(
         default_factory=lambda: _env(

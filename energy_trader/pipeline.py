@@ -44,7 +44,7 @@ def run_pipeline(
 ) -> PipelineResult:
     """Run one EOD cycle. Defaults to ``dry_run=True`` — live trading is opt-in."""
     settings = settings or get_settings()
-    mode = "DRY-RUN" if dry_run else "LIVE"
+    mode = "DRY-RUN" if dry_run else settings.broker.upper()
     logger.info("Starting EOD pipeline (%s) for %s", mode, ", ".join(settings.assets))
 
     # 1) Risk gate first — cheap to halt, expensive to trade into a shock.

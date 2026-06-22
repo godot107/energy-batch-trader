@@ -101,7 +101,7 @@ flowchart LR
 | Phase | What | Risk |
 |------|------|------|
 | **1 — now (local)** | `python -m energy_trader` in **dry-run** (signals, intended orders, Telegram alert) plus `--backtest` over history. You execute by hand. | none |
-| **2 — Alpaca paper (next)** | Add an `AlpacaBroker` against `paper-api.alpaca.markets` to validate real fills with zero risk. *(broker to be built)* | none |
+| **2 — Alpaca paper (now)** | `python -m energy_trader --paper` routes orders to Alpaca's paper account (`AlpacaPaperBroker`) — real fills, zero risk. | none |
 | **3 — Robinhood live** | Add `ROBINHOOD_MCP_TOKEN`, fund a *small* Agentic balance, run `--live`. | small, contained |
 | **4 — Azure** | Timer-triggered Azure Function calls the same `run_pipeline()`; OAuth refresh token in Key Vault. | automated |
 
@@ -116,6 +116,7 @@ python -m energy_trader                # dry-run, default USO/XLE universe
 python -m energy_trader -v             # debug logging
 python -m energy_trader --asset USO    # custom universe
 python -m energy_trader --backtest     # backtest the strategy over history
+python -m energy_trader --paper        # Phase 2: Alpaca paper trading (no real money)
 python -m energy_trader --live         # Phase 3: arms real orders (needs token)
 ```
 
@@ -138,6 +139,7 @@ energy_trader/            # framework-agnostic pipeline (the actual logic)
   notify.py               #   Telegram alerts
   brokers/                #   pluggable execution
     dry_run.py            #     logs intended orders (Phase 1 default)
+    alpaca_paper.py       #     Alpaca paper trading — no real money (Phase 2)
     robinhood_mcp.py      #     official Robinhood Agentic Trading MCP (Phase 3)
   __main__.py             #   CLI: python -m energy_trader
 dags/energy_eod_dag.py    # thin Airflow DAG -> calls run_pipeline()

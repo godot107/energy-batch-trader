@@ -60,12 +60,25 @@ class Broker(ABC):
 
 
 def get_broker(dry_run: bool, settings: Settings) -> Broker:
-    """Return the dry-run broker, or the live Robinhood MCP broker."""
-    if dry_run:
+    """Return the broker for this run.
+
+    ``dry_run=True`` always returns the dry-run broker. Otherwise the execution
+    target is ``settings.broker``: ``"alpaca_paper"`` (Phase 2, no real money) or
+    ``"robinhood"`` (Phase 3, real money).
+    """
+    target = "dry_run" if dry_run else settings.broker
+
+    if target == "dry_run":
         from energy_trader.brokers.dry_run import DryRunBroker
 
         return DryRunBroker()
+    if target in ("alpaca_paper", "alpaca"):
+        from energy_trader.brokers.alpaca_paper import AlpacaPaperBroker
 
-    from energy_trader.brokers.robinhood_mcp import RobinhoodMCPBroker
+        return AlpacaPaperBroker(settings)
+    if target in ("robinhood", "robinhood_mcp"):
+        from energy_trader.brokers.robinhood_mcp import RobinhoodMCPBroker
 
-    return RobinhoodMCPBroker(settings)
+        return RobinhoodMCPBroker(settings)
+
+    raise ValueError(f"Unknown broker target: {target!r}")

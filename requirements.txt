@@ -7,8 +7,9 @@ python-dotenv==1.0.1
 # --- Official Robinhood Agentic Trading MCP client (Phase 2 live execution) ---
 mcp==1.9.0
 
-# --- Market data ---
+# --- Market data + Alpaca paper trading (Phase 2) ---
 alpaca-py==0.32.0
+pytz==2024.1  # alpaca-py imports it directly; pin so it's not a surprise
 fredapi==0.5.2
 # EIA Open Data API (fundamental inventory gate) uses `requests` (core) — no extra dep.
 
