@@ -1,9 +1,15 @@
-"""Fundamental anomaly detection — the legitimate LLM step in the pipeline.
+"""Anomaly detection — the risk gate that can *halt* mechanical trading.
 
-This is where an LLM earns its keep: scanning headlines / EIA reports for
-geopolitical shocks that should *halt* mechanical trading. Trade decisions stay
-deterministic (see :mod:`energy_trader.strategy`); only this risk gate uses an
-LLM. For Phase 1 it returns "no anomaly" until wired to a real model.
+This aggregates one or more risk signals into a single halt decision. Trade
+decisions themselves stay deterministic (see :mod:`energy_trader.strategy`); this
+gate only ever *stops* a run, it never sizes or directs a trade.
+
+Signals:
+  - **Fundamental (live):** EIA Weekly Petroleum Status Report inventory surprise
+    (:mod:`energy_trader.eia`) — deterministic, no LLM.
+  - **Geopolitical (TODO next):** LLM web-search research and/or prediction-market
+    probabilities for war/OPEC/sanction shocks. This is the only place an LLM is
+    permitted to run, and only as a risk gate.
 """
 
 from __future__ import annotations
@@ -12,6 +18,7 @@ import logging
 from dataclasses import dataclass
 
 from energy_trader.config import Settings
+from energy_trader.eia import check_inventory_shock
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +30,18 @@ class AnomalyResult:
 
 
 def detect_anomalies(settings: Settings) -> AnomalyResult:
-    """Check for fundamental shocks that should halt trading.
+    """Aggregate risk signals into a halt decision (``detected=True`` ⇒ halt)."""
+    reasons: list[str] = []
 
-    TODO(phase-1b): call OpenAI/Gemini with web-search grounding over recent
-    energy headlines and the latest EIA Weekly Petroleum Status Report, and set
-    ``detected=True`` when a material shock is found.
-    """
-    if not (settings.openai_api_key or settings.gemini_api_key):
-        logger.info("No LLM key configured — skipping anomaly scan (assume clear).")
-        return AnomalyResult(detected=False, reason="anomaly scan disabled")
+    # Fundamental supply shock — EIA crude inventory surprise (deterministic).
+    eia = check_inventory_shock(settings)
+    if eia.detected:
+        reasons.append(eia.reason)
 
-    logger.info("Scanning for fundamental anomalies via LLM...")
-    # Placeholder: real implementation calls the model here.
-    return AnomalyResult(detected=False, reason="no major geopolitical shocks found")
+    # Geopolitical sentiment (LLM research / prediction markets) — not yet wired.
+    if settings.openai_api_key or settings.gemini_api_key:
+        logger.info("Geopolitical LLM scan not yet wired; skipping for now.")
+
+    if reasons:
+        return AnomalyResult(detected=True, reason=" | ".join(reasons))
+    return AnomalyResult(detected=False, reason="no anomalies detected")

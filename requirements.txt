@@ -10,6 +10,7 @@ mcp==1.9.0
 # --- Market data ---
 alpaca-py==0.32.0
 fredapi==0.5.2
+# EIA Open Data API (fundamental inventory gate) uses `requests` (core) — no extra dep.
 
 # --- LLM anomaly detection ---
 openai==1.30.1

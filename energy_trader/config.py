@@ -65,6 +65,12 @@ class Settings:
         default_factory=lambda: _env("TELEGRAM_CHAT_ID")
     )
 
+    # --- EIA Open Data API (fundamental supply signal) -------------------
+    eia_api_key: str | None = field(default_factory=lambda: _env("EIA_API_KEY"))
+    # Halt when the latest weekly crude-stock change is this many std devs (vs the
+    # trailing year) from normal — an outsized inventory surprise.
+    eia_stock_z_threshold: float = 2.5
+
     # --- LLM anomaly detection -------------------------------------------
     openai_api_key: str | None = field(default_factory=lambda: _env("OPENAI_API_KEY"))
     gemini_api_key: str | None = field(default_factory=lambda: _env("GEMINI_API_KEY"))
