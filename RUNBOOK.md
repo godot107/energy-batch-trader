@@ -13,12 +13,27 @@ Dry-run computes signals, prints the orders it *would* place, and (if Telegram i
 configured) sends an alert. Nothing is sent to a broker. This is the safe loop
 for validating the strategy before any real money is involved.
 
-## 2. Backtesting with VectorBT (research only)
+## 2. Backtesting
 
-`vectorbt` is for offline parameter sweeps, **not** the live job (the daily
-signal is plain-pandas in `strategy.py`). Prototype in a notebook *outside*
-`dags/`: pull Alpaca history, run `vbt.Portfolio.from_signals()`, and once you
-like the `fast_window`/`slow_window`, set them in `energy_trader/config.py`.
+**Built-in harness (default).** Replays the *live* signal over history:
+
+```bash
+python -m energy_trader --backtest                 # 3y, USO/XLE
+python -m energy_trader --backtest --years 5 --asset USO
+```
+
+It reuses `strategy.crossover_series()` — the same rule the live job runs — so the
+backtest can't drift from production. Reports total return, CAGR, Sharpe, max
+drawdown, trade count, and win rate vs. buy-and-hold. numpy/pandas only.
+
+> Backtests need **real bars** to mean anything: set `ALPACA_API_KEY` /
+> `ALPACA_SECRET_KEY`. Without them the run uses synthetic data (proves the
+> harness works, tells you nothing about the strategy).
+
+**VectorBT (optional, research only).** For fast `fast_window`/`slow_window`
+parameter sweeps, prototype in a notebook *outside* `dags/`: pull Alpaca history,
+run `vbt.Portfolio.from_signals()`, then set the winning windows in
+`energy_trader/config.py`. Not a runtime dependency of the daily job.
 
 ## 3. Telegram notifications
 

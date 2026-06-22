@@ -17,22 +17,29 @@ from energy_trader.config import Settings
 logger = logging.getLogger(__name__)
 
 
+def crossover_series(close: pd.Series, fast: int, slow: int) -> pd.Series:
+    """Per-bar "buy"/"sell"/"hold" signal from fast/slow SMA crossovers.
+
+    The single source of truth for the signal rule: the live point-in-time
+    decision (:func:`_crossover_signal`) returns the *last* element of this, and
+    the backtest replays the *whole* series — so the two can never drift.
+    """
+    fast_ma = close.rolling(fast).mean()
+    slow_ma = close.rolling(slow).mean()
+    diff = fast_ma - slow_ma
+    prev = diff.shift(1)  # NaN warmup bars compare False → "hold"
+
+    signal = pd.Series("hold", index=close.index, dtype=object)
+    signal[(prev <= 0) & (diff > 0)] = "buy"
+    signal[(prev >= 0) & (diff < 0)] = "sell"
+    return signal
+
+
 def _crossover_signal(close: pd.Series, fast: int, slow: int) -> str:
     """Return "buy", "sell", or "hold" from the latest fast/slow SMA cross."""
     if len(close) < slow + 1:
         return "hold"
-
-    fast_ma = close.rolling(fast).mean()
-    slow_ma = close.rolling(slow).mean()
-
-    prev_diff = fast_ma.iloc[-2] - slow_ma.iloc[-2]
-    curr_diff = fast_ma.iloc[-1] - slow_ma.iloc[-1]
-
-    if prev_diff <= 0 < curr_diff:
-        return "buy"
-    if prev_diff >= 0 > curr_diff:
-        return "sell"
-    return "hold"
+    return str(crossover_series(close, fast, slow).iloc[-1])
 
 
 def analyze(data: dict[str, pd.DataFrame], settings: Settings) -> list[Order]:
