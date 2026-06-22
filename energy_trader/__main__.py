@@ -46,6 +46,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Years of history for --backtest (default: 3).",
     )
     parser.add_argument(
+        "--strategy",
+        choices=["sma", "pairs"],
+        default="sma",
+        help="Backtest strategy: 'sma' crossover (default) or 'pairs' "
+        "(USO/XLE spread mean reversion; needs exactly 2 assets).",
+    )
+    parser.add_argument(
         "-v", "--verbose", action="store_true", help="Debug logging."
     )
     args = parser.parse_args(argv)
@@ -63,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
         settings.assets = args.assets
 
     if args.backtest:
-        return _run_backtest(settings, args.years)
+        return _run_backtest(settings, args.years, args.strategy)
 
     if args.paper:
         settings.broker = "alpaca_paper"
@@ -79,18 +86,55 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _run_backtest(settings, years: float) -> int:
+def _run_backtest(settings, years: float, strategy: str) -> int:
     # Backtests need far more history than the ~200-bar live lookback.
-    from energy_trader.backtest import format_report, run_backtest
     from energy_trader.data import extract_market_data
 
     bt_settings = dataclasses.replace(settings, lookback_days=int(years * 252))
     data = extract_market_data(bt_settings)
-    results = run_backtest(data, bt_settings)
 
+    # USO roll-decay (contango) diagnostic — honest about USO's drag vs spot oil.
+    if "USO" in data and bt_settings.eia_api_key:
+        _print_roll_decay(data, bt_settings)
+
+    if strategy == "pairs":
+        from energy_trader.pairs import backtest_pair, format_sweep, sweep_pairs
+
+        syms = bt_settings.assets
+        if len(syms) < 2:
+            print("Pairs backtest needs at least 2 assets "
+                  "(e.g. --asset USO --asset XLE).")
+            return 2
+        if len(syms) == 2:
+            a, b = syms
+            res = backtest_pair(data[a]["Close"].rename(a),
+                                data[b]["Close"].rename(b), bt_settings)
+            print("\n=== Pairs Backtest ===")
+            print(res.describe() if res else "Insufficient history for the pair.")
+        else:
+            print("\n=== Pairs Sweep ===")
+            print(format_sweep(sweep_pairs(data, bt_settings), bt_settings))
+        return 0
+
+    from energy_trader.backtest import format_report, run_backtest
+
+    results = run_backtest(data, bt_settings)
     print("\n=== Backtest Result ===")
     print(format_report(results, bt_settings))
     return 0
+
+
+def _print_roll_decay(data, settings) -> None:
+    from energy_trader.eia import fetch_wti_spot
+    from energy_trader.roll import roll_decay
+
+    wti = fetch_wti_spot(settings, length=settings.lookback_days * 2 + 60)
+    if wti.empty:
+        return
+    rd = roll_decay(data["USO"]["Close"], wti)
+    if rd is not None:
+        print("\n=== USO roll-decay (contango) ===")
+        print(rd.describe())
 
 
 if __name__ == "__main__":

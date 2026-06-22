@@ -10,6 +10,7 @@ source .venv/bin/activate              # project-local venv (core deps only)
 python -m energy_trader                 # dry-run (default, safe)
 python -m energy_trader --paper         # Phase 2: Alpaca paper trading (no real money)
 python -m energy_trader --backtest      # backtest the strategy over history
+python -m energy_trader --backtest --strategy pairs --asset USO --asset XLE  # pairs
 python -m energy_trader --live          # Phase 3: arms real orders; needs ROBINHOOD_MCP_TOKEN
 .venv/bin/python -m py_compile energy_trader/*.py energy_trader/brokers/*.py dags/*.py
 ```
@@ -31,6 +32,10 @@ Core runtime needs only `pandas numpy requests python-dotenv`. The full
   signal (`strategy.py`) is plain pandas and deterministic. The built-in
   `--backtest` harness (`backtest.py`) reuses that same signal; vectorbt stays
   optional for offline parameter sweeps.
+- **Research tooling is read-only and separate from live.** `--strategy pairs`
+  (`pairs.py`) is a market-neutral spread strategy with a `statsmodels`
+  cointegration gate (lazy import) + pair sweep; `roll.py` reports USO's
+  roll-decay vs WTI spot (EIA). Both are analysis only — they never place orders.
 - **Brokers are pluggable** (`brokers/`): `DryRunBroker` (Phase 1),
   `AlpacaPaperBroker` (Phase 2, paper — no real money), and `RobinhoodMCPBroker`
   (Phase 3, live). Default everything to **dry-run**; `--paper` selects Alpaca

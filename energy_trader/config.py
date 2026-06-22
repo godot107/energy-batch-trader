@@ -37,6 +37,13 @@ class Settings:
     slow_window: int = 50
     lookback_days: int = 200
 
+    # --- Pairs trading (USO/XLE spread mean reversion) -------------------
+    pairs_lookback: int = 60  # rolling window for hedge ratio + z-score
+    pairs_entry_z: float = 2.0
+    pairs_exit_z: float = 0.5
+    pairs_stop_z: float = 3.5
+    pairs_coint_max: float = 0.05  # only trade pairs with coint p-value <= this
+
     # --- Execution --------------------------------------------------------
     # Energy EOD orders are queued after the close for the next session, so
     # extended-hours is on by default.

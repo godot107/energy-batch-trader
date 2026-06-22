@@ -24,6 +24,24 @@ logger = logging.getLogger(__name__)
 TRADING_DAYS = 252
 
 
+def perf_metrics(net: pd.Series, initial_cash: float = 10_000.0):
+    """Equity curve + headline metrics from a net per-bar return series.
+
+    Returns ``(total_return, cagr, sharpe, max_drawdown, equity)``. Shared by the
+    single-asset and pairs backtests so they're scored identically.
+    """
+    equity = (1.0 + net).cumprod() * initial_cash
+    n = len(net)
+    total_return = float(equity.iloc[-1] / initial_cash - 1.0)
+    cagr = (
+        float((equity.iloc[-1] / initial_cash) ** (TRADING_DAYS / n) - 1.0) if n else 0.0
+    )
+    std = net.std()
+    sharpe = float(net.mean() / std * np.sqrt(TRADING_DAYS)) if std > 0 else 0.0
+    max_dd = float((equity / equity.cummax() - 1.0).min())
+    return total_return, cagr, sharpe, max_dd, equity
+
+
 @dataclass
 class BacktestResult:
     symbol: str
@@ -95,14 +113,7 @@ def backtest_symbol(
     ret = close.pct_change().fillna(0.0)
     turnover = pos.diff().abs().fillna(pos.iloc[0])
     net = pos * ret - turnover * fee
-    equity = (1.0 + net).cumprod() * initial_cash
-
-    n = len(net)
-    total_return = equity.iloc[-1] / initial_cash - 1.0
-    cagr = (equity.iloc[-1] / initial_cash) ** (TRADING_DAYS / n) - 1.0
-    std = net.std()
-    sharpe = float(net.mean() / std * np.sqrt(TRADING_DAYS)) if std > 0 else 0.0
-    max_dd = float((equity / equity.cummax() - 1.0).min())
+    total_return, cagr, sharpe, max_dd, equity = perf_metrics(net, initial_cash)
 
     trades = _trade_returns(pos, close)
     win_rate = float(np.mean([t > 0 for t in trades])) if trades else 0.0

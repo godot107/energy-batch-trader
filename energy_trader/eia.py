@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+import pandas as pd
 import requests
 
 from energy_trader.config import Settings
@@ -27,6 +28,9 @@ logger = logging.getLogger(__name__)
 EIA_V2_BASE = "https://api.eia.gov/v2"
 CRUDE_STOCKS_ROUTE = "petroleum/stoc/wstk/data"
 CRUDE_STOCKS_SERIES = "WCESTUS1"  # U.S. ending stocks excl. SPR, thousand barrels
+
+WTI_SPOT_ROUTE = "petroleum/pri/spt/data"
+WTI_SPOT_SERIES = "RWTC"  # Cushing, OK WTI spot price FOB, $/bbl (daily)
 
 
 @dataclass
@@ -110,3 +114,36 @@ def check_inventory_shock(settings: Settings) -> EIASignal:
     signal = assess_inventory_shock(values, settings.eia_stock_z_threshold)
     logger.info("EIA inventory check: %s", signal.reason)
     return signal
+
+
+def fetch_wti_spot(settings: Settings, length: int = 2000) -> pd.Series:
+    """Return daily WTI (Cushing) spot price, chronological.
+
+    Used to measure USO's roll/contango drag against physical oil. Returns an
+    empty Series if no key is set or the fetch fails (caller degrades gracefully).
+    """
+    if not settings.eia_api_key:
+        return pd.Series(dtype=float)
+    params = {
+        "api_key": settings.eia_api_key,
+        "frequency": "daily",
+        "data[0]": "value",
+        "facets[series][]": WTI_SPOT_SERIES,
+        "sort[0][column]": "period",
+        "sort[0][direction]": "desc",
+        "offset": 0,
+        "length": length,
+    }
+    try:
+        resp = requests.get(f"{EIA_V2_BASE}/{WTI_SPOT_ROUTE}", params=params, timeout=20)
+        resp.raise_for_status()
+        rows = [r for r in resp.json()["response"]["data"] if r.get("value") is not None]
+    except Exception as exc:  # noqa: BLE001 - degrade, never crash the run
+        logger.error("EIA WTI spot fetch failed (%s).", exc)
+        return pd.Series(dtype=float)
+    rows = list(reversed(rows))  # oldest→newest
+    return pd.Series(
+        [float(r["value"]) for r in rows],
+        index=pd.to_datetime([r["period"] for r in rows]),
+        name="wti_spot",
+    )

@@ -73,6 +73,13 @@ against a buy-and-hold benchmark. numpy/pandas only — `vectorbt` stays an opti
 research path for parameter sweeps. **Backtests need real history** (Alpaca keys);
 synthetic data only proves the harness runs.
 
+`--strategy pairs` swaps in a **market-neutral spread mean-reversion** strategy
+(`pairs.py`) with an Engle-Granger **cointegration gate** (`gate PASS/FAIL`) and an
+OU half-life; pass 3+ assets to **sweep** every pair, ranked cointegrated-first.
+When USO is in the universe (and `EIA_API_KEY` is set) the backtest also prints a
+**USO roll-decay vs. WTI-spot** diagnostic (`roll.py`) — the contango/backwardation
+drag. See **RUNBOOK §2** for the full research guide.
+
 ## Execution: Robinhood official Agentic Trading MCP
 
 Live execution targets Robinhood's sanctioned **Agentic Trading** MCP at
@@ -136,6 +143,8 @@ energy_trader/            # framework-agnostic pipeline (the actual logic)
   eia.py                  #   EIA inventory-shock signal (deterministic)
   strategy.py             #   deterministic SMA crossover (single source of truth)
   backtest.py             #   lightweight backtest harness (--backtest)
+  pairs.py                #   market-neutral spread strategy + cointegration sweep
+  roll.py                 #   USO roll-decay (contango) vs WTI-spot diagnostic
   notify.py               #   Telegram alerts
   brokers/                #   pluggable execution
     dry_run.py            #     logs intended orders (Phase 1 default)
