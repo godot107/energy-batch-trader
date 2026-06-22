@@ -1,0 +1,71 @@
+"""Broker interface + order model + factory."""
+
+from __future__ import annotations
+
+import logging
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any
+
+from energy_trader.config import Settings
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Order:
+    """A single intended equity order.
+
+    Exactly one of ``quantity`` / ``notional`` should be set. ``notional``
+    (dollar amount) is preferred for fractional ETF orders like USO/XLE.
+    """
+
+    symbol: str
+    side: str  # "buy" | "sell"
+    quantity: float | None = None
+    notional: float | None = None
+    order_type: str = "market"
+    time_in_force: str = "gtc"
+    extended_hours: bool = True
+    reason: str = ""
+
+    def describe(self) -> str:
+        size = (
+            f"${self.notional:.2f}" if self.notional is not None
+            else f"{self.quantity} sh"
+        )
+        return f"{self.side.upper()} {size} {self.symbol} ({self.order_type})"
+
+
+@dataclass
+class OrderResult:
+    order: Order
+    status: str  # "submitted" | "dry_run" | "rejected" | "error"
+    broker: str
+    detail: dict[str, Any] = field(default_factory=dict)
+
+
+class Broker(ABC):
+    """Execution backend contract."""
+
+    name: str = "base"
+
+    def review(self, order: Order) -> dict[str, Any]:
+        """Optional pre-trade check; backends may override. Default: no-op."""
+        return {"status": "skipped"}
+
+    @abstractmethod
+    def place(self, order: Order) -> OrderResult:
+        """Execute (or simulate) the order."""
+
+
+def get_broker(dry_run: bool, settings: Settings) -> Broker:
+    """Return the dry-run broker, or the live Robinhood MCP broker."""
+    if dry_run:
+        from energy_trader.brokers.dry_run import DryRunBroker
+
+        return DryRunBroker()
+
+    from energy_trader.brokers.robinhood_mcp import RobinhoodMCPBroker
+
+    return RobinhoodMCPBroker(settings)

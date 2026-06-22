@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+venv/
+.venv/
+*.egg-info/
+.env
+
+# Airflow
+airflow.cfg
+airflow.db
+unittests.cfg
+webserver_config.py
+logs/
+
+# MacOS
+.DS_Store
+
+# Claude Code (local, per-machine settings)
+.claude/settings.local.json

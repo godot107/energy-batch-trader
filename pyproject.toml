@@ -1,0 +1,8 @@
+[project]
+name = "energy-batch-trader"
+version = "0.2.0"
+description = "EOD energy trading pipeline with pluggable execution (Robinhood official MCP)."
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["energy_trader", "energy_trader.brokers"]

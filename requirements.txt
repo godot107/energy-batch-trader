@@ -1,0 +1,26 @@
+# --- Core pipeline (needed to run `python -m energy_trader`) ---
+pandas==2.2.2
+numpy==1.26.4
+requests==2.31.0
+python-dotenv==1.0.1
+
+# --- Official Robinhood Agentic Trading MCP client (Phase 2 live execution) ---
+mcp==1.9.0
+
+# --- Market data ---
+alpaca-py==0.32.0
+fredapi==0.5.2
+
+# --- LLM anomaly detection ---
+openai==1.30.1
+google-generativeai==0.5.3
+beautifulsoup4==4.12.3
+
+# --- Orchestration (optional; only if running via Airflow) ---
+apache-airflow==2.9.1
+
+# --- Backtesting / research only (not a runtime dep of the daily job) ---
+vectorbt==0.26.0
+
+# --- Legacy unofficial execution path (superseded by the official MCP) ---
+robin_stocks==3.3.0
