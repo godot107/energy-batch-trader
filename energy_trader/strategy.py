@@ -62,24 +62,47 @@ def _vol_target_notional(close: pd.Series, settings: Settings) -> tuple[float, s
     return notional, suffix
 
 
-def analyze(data: dict[str, pd.DataFrame], settings: Settings) -> list[Order]:
-    """Turn per-asset price history into a list of intended orders (long-biased)."""
-    orders: list[Order] = []
+def current_signals(
+    data: dict[str, pd.DataFrame], settings: Settings
+) -> dict[str, str]:
+    """Per-symbol "buy"/"sell"/"hold" for the latest bar — today's decision.
 
+    The reporting view of the signal (used by the daily summary), kept separate
+    from order construction so a "hold" day still has something to report.
+    """
+    signals: dict[str, str] = {}
     for symbol, df in data.items():
         if "Close" not in df.columns or df.empty:
             logger.warning("No usable Close series for %s; skipping.", symbol)
             continue
-
-        action = _crossover_signal(
+        signals[symbol] = _crossover_signal(
             df["Close"], settings.fast_window, settings.slow_window
         )
+    return signals
+
+
+def analyze(
+    data: dict[str, pd.DataFrame],
+    settings: Settings,
+    signals: dict[str, str] | None = None,
+) -> list[Order]:
+    """Turn per-asset price history into a list of intended orders (long-biased).
+
+    ``signals`` may be precomputed (so the pipeline computes them once for both
+    the orders and the daily summary); otherwise they're derived here.
+    """
+    orders: list[Order] = []
+    if signals is None:
+        signals = current_signals(data, settings)
+
+    for symbol, action in signals.items():
         logger.info("%s SMA(%d/%d) signal: %s", symbol, settings.fast_window,
                     settings.slow_window, action.upper())
 
         if action == "hold":
             continue
 
+        df = data[symbol]
         notional = settings.default_notional
         reason = f"SMA{settings.fast_window}/{settings.slow_window} crossover"
         # Vol-target only the entry size; a sell flattens the position in full.

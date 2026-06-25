@@ -28,10 +28,12 @@ def send_telegram_alert(message: str) -> bool:
         return False
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
+    # Plain text (no parse_mode): the messages carry dynamic content ($, (), ·, —,
+    # order reasons) that Telegram's Markdown parser rejects ("can't find end of
+    # entity"). Reliability of trade alerts beats a bold header.
     payload = {
         "chat_id": chat_id,
-        "text": f"🔔 *EnergyTrader Alert*\n\n{message}",
-        "parse_mode": "Markdown",
+        "text": f"🔔 EnergyTrader Alert\n\n{message}",
     }
 
     try:
