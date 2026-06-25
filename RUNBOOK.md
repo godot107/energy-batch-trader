@@ -50,6 +50,24 @@ drawdown, trade count, and win rate vs. buy-and-hold. numpy/pandas only.
 
 **`sma`** (default) — long-only SMA crossover, the live signal.
 
+**`carry`** — USO **roll-yield** signal (trailing USO-return − WTI-spot-return;
+positive = backwardation). Prints SMA vs SMA-gated-by-carry vs buy-and-hold on one
+window. Needs `USO` + `EIA_API_KEY`. *Verdict: a regime diagnostic, not an edge —
+see Findings.*
+
+**`voltgt`** — SMA **before/after volatility-targeted sizing** (Kaufman ch.23):
+position scaled by `vol_target_annual / realized_vol` (capped at `vol_max_leverage`).
+The drawdown-tamer that's now wired into live `analyze()`.
+
+```bash
+python -m energy_trader --backtest --strategy carry  --asset USO --plot
+python -m energy_trader --backtest --strategy voltgt --asset USO --plot
+```
+
+`--plot` saves equity/drawdown, carry-regime, and vol-target mechanism PNGs to
+`plots/` (known energy-shock windows shaded). `notebooks/research.ipynb` reproduces
+the whole analysis with inline charts. Both are research-only (lazy matplotlib).
+
 **`pairs`** — market-neutral spread mean reversion between two cointegrated
 instruments. Computes a rolling hedge ratio (`beta`), z-scores the spread, and
 trades extremes (`pairs_entry_z` in / `pairs_exit_z` out / `pairs_stop_z` bail).
@@ -83,21 +101,35 @@ It's a coarse empirical proxy (a total-return gap, not a pure roll decomposition
 but it stops you from assuming a contango drag that the current regime may have
 reversed. You don't need CME contract specs for this — the gap *is* the effect.
 
-### Findings so far (real 5y data, be honest)
+### Findings so far (real data, split-adjusted — be honest)
 
-- **SMA(10/50) trails buy-and-hold** (USO +279% vs +872%; XLE −55% vs −14%).
-- **USO/XLE is not cointegrated** (`gate FAIL`, p≈0.42) — the big pairs return is
-  drift, not reversion.
-- **Sweep:** only near-identical pairs pass the gate (IYE/XOM p≈0.004, VDE/XOM,
-  VDE/IYE), and even those are slightly negative at the default z-thresholds with
-  long half-lives — this universe is weak for stat-arb as configured.
-- **Roll regime** recently **backwardation** (USO has *beaten* spot), not contango.
+> **The data bug that rewrote everything.** Raw Alpaca bars rendered USO's
+> 2020-04-29 **1-for-8 reverse split** as a fake **+745%** day, inflating
+> buy-and-hold ~8× and corrupting every earlier backtest. The pipeline now
+> requests split/dividend-adjusted bars (`Adjustment.ALL` in `data.py`); the
+> findings below are on clean data, and they **reverse** the original conclusions.
+
+- **SMA trend-following BEATS buy-and-hold on USO** (10y clean): B&H +28% vs SMA
+  10/50 **+80%** (Sharpe 0.36, MaxDD −49%), robust across windows — it works by
+  dodging USO's contango drawdowns. (The old "SMA trails B&H" was the split bug.)
+- **SMA trails B&H on XLE** (steady energy-equity uptrend) — expected.
+- **USO roll regime is CONTANGO** (≈ −5%/yr, 10y): USO bled vs WTI spot, the
+  textbook case. (The old "backwardation" reading was the split bug.)
+- **Carry / roll-yield (`--strategy carry`) does NOT beat the SMA baseline** —
+  neither standalone (−16%, −80% DD) nor as an SMA filter (over-vetoes or no-ops).
+  It's a useful regime *diagnostic*, not a tradeable edge here.
+- **Volatility targeting (`--strategy voltgt`) is the win** (Kaufman ch.23): on
+  SMA(5/20) it cuts MaxDD ~−67%→−44% and lifts Sharpe ~0.31→0.38 while holding the
+  return. Now **live** as entry sizing (`vol_target_live`).
+- **USO/XLE still not cointegrated** (`gate FAIL`) — pairs unchanged.
 
 ### Tuning knobs (`config.py`)
 
-`fast_window`/`slow_window` (SMA); `pairs_lookback`, `pairs_entry_z`,
-`pairs_exit_z`, `pairs_stop_z`, `pairs_coint_max` (pairs); `eia_stock_z_threshold`
-(inventory gate). Match `pairs_lookback`/z-thresholds to the pair's half-life.
+`fast_window`/`slow_window` (SMA); `vol_target_annual`/`vol_window`/
+`vol_max_leverage`/`vol_target_live` (vol sizing); `carry_window`/`carry_band`
+(carry); `pairs_lookback`, `pairs_entry_z`, `pairs_exit_z`, `pairs_stop_z`,
+`pairs_coint_max` (pairs); `eia_stock_z_threshold` (inventory gate). Match
+`pairs_lookback`/z-thresholds to the pair's half-life.
 
 ### VectorBT (optional, research only)
 
@@ -112,7 +144,18 @@ dependency of the daily job.
    `https://api.telegram.org/bot<TOKEN>/getUpdates` to find your `chat.id` →
    `TELEGRAM_CHAT_ID`.
 
-Unset = notifications are silently skipped.
+Unset = notifications are silently skipped. Every run sends **one daily summary**
+— the date, each asset's signal, and any orders — so you get a ping even on
+all-hold days:
+
+```
+📊 EOD run (PAPER (alpaca)) — 2026-06-24
+Signals: USO HOLD · XLE HOLD
+No orders today (all hold).
+```
+
+(Plain text, not Markdown — trade reasons carry `$ ( ) · —` that Telegram's
+Markdown parser rejects.)
 
 ## 4. Phase 2 — Alpaca paper trading (no real money)
 
@@ -149,9 +192,25 @@ not `robin_stocks`. The old SMS/TOTP MFA headache is gone — auth is OAuth.
 
 ## 6. Deployment options (Phase 4)
 
+**GitHub Actions (deployed — the cloud scheduler in use).**
+`.github/workflows/eod-paper.yml` runs the pipeline on a cron with no server or
+workstation kept on:
+- Schedule `0 22 * * 1-5` — GitHub cron is **UTC only (no DST)**, so 22:00 UTC =
+  6 PM EDT / 5 PM EST, both safely after the 4 PM ET close. Also `workflow_dispatch`
+  for manual runs (`gh workflow run eod-paper.yml`).
+- Installs the lean `requirements-runtime.txt` (no Airflow/viz) — installs in
+  seconds. Runs `python -m energy_trader --paper`.
+- Keys come from **repo secrets** (`gh secret set NAME`), not `.env`. Missing
+  optional ones (EIA/Telegram) degrade gracefully.
+- Caveats: not NYSE-holiday-aware (degrades to "hold"); GitHub disables scheduled
+  workflows after **60 days** with no repo commits; cron can lag a few minutes.
+
+Check runs: `gh run list --workflow=eod-paper.yml` → `gh run view <id> --log`.
+
 **Airflow (kept as an option).** `export AIRFLOW_HOME=$(pwd)` so the `dags/`
-folder is found; the DAG is a thin wrapper that calls `run_pipeline()`. Heavy for
-one daily job — fine if you already run Airflow.
+folder is found; the DAG is a thin wrapper that calls `run_pipeline()`. The DAG's
+`start_date` is tz-aware (`America/New_York`) so `0 18` means 6 PM ET, not UTC.
+Heavy for one daily job — fine if you already run Airflow.
 
 **Azure Functions (Phase 4 target).** A Timer-triggered function is the cheap
 serverless fit. The function body is essentially:

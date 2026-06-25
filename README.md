@@ -12,22 +12,28 @@ trade into a shock), then data → signal → execution → alert.
 
 ```mermaid
 flowchart TD
-    G{Anomaly gate<br/>risk signals} -- shock --> H[Halt + Telegram alert]
-    G -- clear --> X[Extract EOD bars<br/>USO / XLE · Alpaca]
+    G{Anomaly gate<br/>risk signals} -- shock --> H[Halt]
+    G -- clear --> X[Extract EOD bars<br/>USO / XLE · Alpaca, adjusted]
     X --> S[SMA crossover signal<br/>deterministic, no LLM]
-    S -- no cross --> N[No orders today]
-    S -- buy / sell --> B[Broker<br/>dry-run · Alpaca paper · Robinhood]
-    B --> T[Telegram alert]
+    S -- buy --> V[Vol-target sizing<br/>Kaufman ch.23]
+    V --> B[Broker<br/>dry-run · Alpaca paper · Robinhood]
+    S -- sell --> B
+    S -- no cross --> N[No orders]
+    B --> T[Daily Telegram summary]
+    N --> T
+    H --> T
 ```
 
 1. **Anomaly gate** — halts the run if a risk signal fires (see below). The only
    place an LLM is *ever* permitted, and only to stop trading — never to trade.
 2. **Extract** EOD bars for the energy universe (USO/XLE) via Alpaca (synthetic
    fallback if keys are absent).
-3. **Analyze** — a deterministic SMA-crossover signal produces intended orders.
-   No LLM in the trade decision.
+3. **Analyze** — a deterministic SMA-crossover signal produces intended orders,
+   **vol-target sized** (Kaufman ch.23 — position scaled by `target/realized vol`
+   so it shrinks into shocks). No LLM in the trade decision.
 4. **Execute** — orders go to a pluggable broker (dry-run, Alpaca paper, or the
-   Robinhood MCP), then a Telegram alert is sent.
+   Robinhood MCP). A **daily Telegram summary** is sent every run — signals and any
+   orders — so you get a ping even on all-hold days.
 
 ## Anomaly gate (the risk gate)
 
@@ -78,7 +84,19 @@ synthetic data only proves the harness runs.
 OU half-life; pass 3+ assets to **sweep** every pair, ranked cointegrated-first.
 When USO is in the universe (and `EIA_API_KEY` is set) the backtest also prints a
 **USO roll-decay vs. WTI-spot** diagnostic (`roll.py`) — the contango/backwardation
-drag. See **RUNBOOK §2** for the full research guide.
+drag. (Backtests use **split/dividend-adjusted** bars — `Adjustment.ALL` — so USO's
+2020 reverse split doesn't corrupt the history.)
+
+Two more research strategies: `--strategy carry` (`carry.py`) tests USO's
+**roll-yield** as a signal against SMA + buy-and-hold, and `--strategy voltgt`
+(`sizing.py`) shows SMA **before/after volatility-targeted sizing** (Kaufman ch.23)
+— the drawdown-tamer now wired into live sizing. Add `--plot` to save equity,
+drawdown, regime, and vol-target charts to `plots/` (energy-shock windows shaded);
+`notebooks/research.ipynb` reproduces the whole analysis with inline charts.
+
+> **Headline:** on clean data, plain SMA **beats** buy-and-hold on USO (it dodges
+> contango drawdowns), and vol-targeting roughly halves the drawdown. Carry is a
+> regime diagnostic, not an edge. See **RUNBOOK §2** for the full, honest findings.
 
 ## Execution: Robinhood official Agentic Trading MCP
 
@@ -102,7 +120,7 @@ But real money comes last: the strategy is **paper-traded on Alpaca first**.
 flowchart LR
     P1["1 · Local<br/>dry-run + backtest"] --> P2["2 · Alpaca paper<br/>real fills, no risk"]
     P2 --> P3["3 · Robinhood live<br/>small funded account"]
-    P3 --> P4["4 · Azure<br/>Timer Function"]
+    P3 --> P4["4 · Cloud cron<br/>GitHub Actions (deployed)"]
 ```
 
 | Phase | What | Risk |
@@ -110,7 +128,7 @@ flowchart LR
 | **1 — now (local)** | `python -m energy_trader` in **dry-run** (signals, intended orders, Telegram alert) plus `--backtest` over history. You execute by hand. | none |
 | **2 — Alpaca paper (now)** | `python -m energy_trader --paper` routes orders to Alpaca's paper account (`AlpacaPaperBroker`) — real fills, zero risk. | none |
 | **3 — Robinhood live** | Add `ROBINHOOD_MCP_TOKEN`, fund a *small* Agentic balance, run `--live`. | small, contained |
-| **4 — Azure** | Timer-triggered Azure Function calls the same `run_pipeline()`; OAuth refresh token in Key Vault. | automated |
+| **4 — Cloud (deployed)** | **GitHub Actions** cron runs `--paper` every weekday ~6 PM ET (`.github/workflows/eod-paper.yml`, keys via repo secrets) — no server kept on. Azure Functions Timer is the serverless alternative. | automated |
 
 ## Quick start (Phase 1)
 
@@ -123,8 +141,10 @@ python -m energy_trader                # dry-run, default USO/XLE universe
 python -m energy_trader -v             # debug logging
 python -m energy_trader --asset USO    # custom universe
 python -m energy_trader --backtest     # backtest the strategy over history
+python -m energy_trader --backtest --strategy voltgt --asset USO --plot  # vol-targeting + charts
 python -m energy_trader --paper        # Phase 2: Alpaca paper trading (no real money)
 python -m energy_trader --live         # Phase 3: arms real orders (needs token)
+jupyter lab notebooks/research.ipynb   # research notebook (needs full deps)
 ```
 
 Optional keys (each feature degrades gracefully if unset): `ALPACA_API_KEY` /
@@ -141,16 +161,22 @@ energy_trader/            # framework-agnostic pipeline (the actual logic)
   config.py  data.py      #   settings; Alpaca extract (+ synthetic fallback)
   anomaly.py              #   risk gate: aggregates halt signals
   eia.py                  #   EIA inventory-shock signal (deterministic)
-  strategy.py             #   deterministic SMA crossover (single source of truth)
-  backtest.py             #   lightweight backtest harness (--backtest)
+  strategy.py             #   SMA crossover + live vol-target sizing (single source)
+  sizing.py               #   volatility-targeted position sizing (Kaufman ch.23)
+  backtest.py             #   backtest harness — sma / carry / voltgt (--backtest)
+  carry.py                #   USO roll-yield (carry) signal + regime filter
   pairs.py                #   market-neutral spread strategy + cointegration sweep
   roll.py                 #   USO roll-decay (contango) vs WTI-spot diagnostic
-  notify.py               #   Telegram alerts
+  plots.py                #   research-only backtest charts (--plot; lazy matplotlib)
+  notify.py               #   Telegram alerts (daily summary)
   brokers/                #   pluggable execution
     dry_run.py            #     logs intended orders (Phase 1 default)
     alpaca_paper.py       #     Alpaca paper trading — no real money (Phase 2)
     robinhood_mcp.py      #     official Robinhood Agentic Trading MCP (Phase 3)
   __main__.py             #   CLI: python -m energy_trader
+notebooks/research.ipynb  # reproducible research narrative (inline charts)
+.github/workflows/        # GitHub Actions cloud scheduler (eod-paper.yml)
+requirements-runtime.txt  # lean deps for the scheduled job (no Airflow/viz)
 dags/energy_eod_dag.py    # thin Airflow DAG -> calls run_pipeline()
 plugins/                  # Airflow plugins (notifications shim; legacy RH hook)
 ```
