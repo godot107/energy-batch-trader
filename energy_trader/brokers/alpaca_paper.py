@@ -74,6 +74,14 @@ class AlpacaPaperBroker(Broker):
         except Exception as exc:  # noqa: BLE001
             return {"error": str(exc)}
 
+    def equity(self) -> float | None:
+        """Paper-account equity (total value) for percent-of-equity sizing."""
+        try:
+            return float(self.client.get_account().equity)
+        except Exception as exc:  # noqa: BLE001 - degrade to fixed notional
+            logger.warning("Could not fetch Alpaca account equity (%s).", exc)
+            return None
+
     def place(self, order: Order) -> OrderResult:
         try:
             o = self.client.submit_order(order_data=self._request(order))

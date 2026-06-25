@@ -137,6 +137,45 @@ For fast parameter sweeps, prototype in a notebook *outside* `dags/`:
 `vbt.Portfolio.from_signals()`, then set the winners in `config.py`. Not a runtime
 dependency of the daily job.
 
+### Position sizing — how much to buy/sell (money management)
+
+The signal decides *direction*; **sizing** decides *how much*, and it's a separate
+money-management choice. Reference: **Kaufman, *Trading Systems and Methods*,
+ch.23** ("three basic ways to calculate position size", p.1070–1071).
+
+| Method | What | Trade-off |
+|---|---|---|
+| Equal dollar | `$X / price` shares | Simple, but ignores volatility — dumps risk into the most volatile name (p.1071). |
+| **Fixed-fractional / %-of-equity** | a fixed % of the **account** per position | Scales with equity; the standard "allocation" answer. |
+| **Volatility-adjusted** | size to **equal risk** / a target volatility (p.1068) | Kaufman's "most conservative" choice; tames drawdown. |
+| Kelly / optimal-f (p.1110–11) | growth-maximizing `f = (p(PLR+1)−1)/PLR` | Mathematically optimal but brutally aggressive; use *fractional* Kelly. Too hot for a small account. |
+| VaR budget (Edwards, p.430–436) | size so portfolio Value-at-Risk stays within a budget | The energy-desk framing; diversification lowers it (p.434). |
+
+**What this project does** (`strategy._size_entry` + `sizing.py`) — a two-rung
+ladder combining the two *conservative* methods:
+
+```
+notional = risk_fraction × account_equity     # %-of-equity base   (Kaufman p.1070)
+         × (vol_target / realized_vol)         # equal-risk scaling (p.1068, 1071)
+```
+
+- **Base** = `risk_fraction` (default **10%**) × account equity, read live from the
+  broker (`Broker.equity()`; Alpaca reports it). If equity is unknown (dry-run, or
+  an unconfigured/unreachable broker) it falls back to the fixed `default_notional`
+  (\$100) — so sizing scales with the real account, not a hardcoded number.
+- **Vol scaling** = `vol_target_annual / realized_vol`, capped at `vol_max_leverage`
+  (1.0 = long-only, no margin), so the position shrinks as volatility rises.
+- Applied to **entries** (buys). A sell flattens, so it uses the base notional only.
+  Full daily rebalancing of held positions is a `TODO(rebalance)` (needs a
+  position-aware broker).
+
+Every order's `reason` records the math, e.g.
+`SMA5/20 crossover · 10% of $1,000 equity × voltgt 0.70 (target 20%)`.
+
+Knobs (`config.py`): `risk_fraction`, `default_notional`, `vol_target_annual`,
+`vol_window`, `vol_max_leverage`, `vol_target_live`. Kelly/VaR are deliberately
+*not* used — too aggressive / heavyweight for a small, paper-first account.
+
 ## 3. Telegram notifications
 
 1. Message `@BotFather` → `/newbot` → copy the HTTP API token → `TELEGRAM_BOT_TOKEN`.

@@ -60,11 +60,16 @@ class Settings:
     # Full daily rebalancing would need position-aware brokers — see analyze().
     vol_target_live: bool = True
 
-    # --- Execution --------------------------------------------------------
+    # --- Execution / position sizing -------------------------------------
     # Energy EOD orders are queued after the close for the next session, so
     # extended-hours is on by default.
     extended_hours: bool = True
-    default_notional: float = 100.0  # dollar size per order
+    # Sizing ladder (Kaufman, Trading Systems and Methods, ch.23): a position's
+    # base $ is `risk_fraction × account_equity` (fixed-fractional / percent-of-
+    # equity) when the broker reports equity, else `default_notional` (dry-run /
+    # equity unknown). That base is then volatility-scaled (see vol_* below).
+    risk_fraction: float = 0.10  # fraction of account equity per position
+    default_notional: float = 100.0  # fallback $ when equity is unknown
 
     # Execution target when not in dry-run:
     #   "dry_run" (default) | "alpaca_paper" (Phase 2) | "robinhood" (Phase 3).

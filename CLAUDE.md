@@ -37,11 +37,13 @@ viz stack (matplotlib, jupyterlab — see `plots.py` / `notebooks/`).
   signal (`strategy.py`) is plain pandas and deterministic. The built-in
   `--backtest` harness (`backtest.py`) reuses that same signal; vectorbt stays
   optional for offline parameter sweeps.
-- **Live position sizing = volatility targeting** (Kaufman ch.23, `sizing.py`):
-  `analyze()` scales each buy's notional by `vol_target_annual / realized_vol`
-  (capped at `vol_max_leverage`; toggle `vol_target_live`). This is *entry sizing* —
-  it doesn't rebalance the held position daily as the backtest does; full
-  rebalancing needs position-aware brokers (`TODO(rebalance)`).
+- **Live position sizing = percent-of-equity × volatility targeting** (Kaufman
+  ch.23; `strategy._size_entry`, `sizing.py`): base = `risk_fraction × account_equity`
+  (read live via `Broker.equity()`, else the fixed `default_notional`), then ×
+  `vol_target_annual / realized_vol` (capped at `vol_max_leverage`; toggle
+  `vol_target_live`). Entry sizing only — held positions aren't rebalanced daily as
+  the backtest is; full rebalancing needs position-aware brokers (`TODO(rebalance)`).
+  Full reasoning + references in RUNBOOK "Position sizing".
 - **Cadence: once per trading day, evening ET.** The DAG fires `0 18` in
   `America/New_York` (6 PM ET, ~2h after the 4 PM close, final daily bars in). The
   tz-aware `start_date` is load-bearing — a naive datetime would mean 18:00 UTC

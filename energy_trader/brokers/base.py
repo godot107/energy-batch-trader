@@ -54,6 +54,14 @@ class Broker(ABC):
         """Optional pre-trade check; backends may override. Default: no-op."""
         return {"status": "skipped"}
 
+    def equity(self) -> float | None:
+        """Account equity (total value) for percent-of-equity position sizing.
+
+        Returns ``None`` when there's no real account or it can't be read (e.g.
+        dry-run), in which case the strategy falls back to a fixed notional.
+        """
+        return None
+
     @abstractmethod
     def place(self, order: Order) -> OrderResult:
         """Execute (or simulate) the order."""
