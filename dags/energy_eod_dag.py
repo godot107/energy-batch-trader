@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 
+import pendulum
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 
@@ -46,8 +47,13 @@ with DAG(
     "energy_eod_strategy",
     default_args=default_args,
     description="Daily EOD energy strategy — extract, anomaly gate, analyze, execute",
-    schedule_interval="0 18 * * 1-5",  # 6 PM, Mon–Fri
-    start_date=datetime(2023, 1, 1),
+    # 6 PM America/New_York, Mon–Fri — i.e. ~2h after the 4 PM ET equity close, so
+    # the final daily bars are in. The tz-aware start_date is what makes "18" mean
+    # 6 PM Eastern (a naive datetime would be 18:00 UTC ≈ 1–2 PM ET, pre-close).
+    # NOTE: this runs every weekday incl. market holidays; the pipeline degrades to
+    # "hold" on a stale/absent bar, so it's safe but not holiday-aware (TODO).
+    schedule_interval="0 18 * * 1-5",
+    start_date=pendulum.datetime(2023, 1, 1, tz="America/New_York"),
     catchup=False,
     tags=["trading", "energy"],
 ) as dag:

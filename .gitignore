@@ -20,3 +20,9 @@ logs/
 
 # Claude Code (local, per-machine settings)
 .claude/settings.local.json
+
+# Generated backtest charts
+plots/
+
+# Jupyter
+.ipynb_checkpoints/

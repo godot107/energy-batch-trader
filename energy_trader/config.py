@@ -33,8 +33,8 @@ class Settings:
     assets: list[str] = field(default_factory=lambda: ["USO", "XLE"])
 
     # --- Strategy params --------------------------------------------------
-    fast_window: int = 10
-    slow_window: int = 50
+    fast_window: int = 5
+    slow_window: int = 20
     lookback_days: int = 200
 
     # --- Pairs trading (USO/XLE spread mean reversion) -------------------
@@ -43,6 +43,22 @@ class Settings:
     pairs_exit_z: float = 0.5
     pairs_stop_z: float = 3.5
     pairs_coint_max: float = 0.05  # only trade pairs with coint p-value <= this
+
+    # --- Carry / roll-yield signal (USO term structure) ------------------
+    # Realized roll yield = trailing USO return − trailing WTI-spot return over
+    # `carry_window` aligned bars (positive ⇒ backwardation ⇒ go long USO).
+    carry_window: int = 63  # ~3 months; roll regimes are slow-moving
+    carry_band: float = 0.005  # dead-band on the return diff to damp whipsaw
+
+    # --- Volatility-targeted position sizing (Kaufman ch.23) -------------
+    # Scale the position to a constant risk: weight = target / realized vol,
+    # capped at vol_max_leverage. Shrinks exposure into shocks (the −48% DD fix).
+    vol_target_annual: float = 0.20  # target annualized volatility
+    vol_window: int = 20  # lookback (days) for realized vol
+    vol_max_leverage: float = 1.0  # cap (1.0 = long-only cash, no margin)
+    # Live: scale each buy's notional by the vol-target weight (entry sizing).
+    # Full daily rebalancing would need position-aware brokers — see analyze().
+    vol_target_live: bool = True
 
     # --- Execution --------------------------------------------------------
     # Energy EOD orders are queued after the close for the next session, so

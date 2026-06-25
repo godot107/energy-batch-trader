@@ -42,6 +42,26 @@ def _crossover_signal(close: pd.Series, fast: int, slow: int) -> str:
     return str(crossover_series(close, fast, slow).iloc[-1])
 
 
+def _vol_target_notional(close: pd.Series, settings: Settings) -> tuple[float, str]:
+    """Scale ``default_notional`` by the latest vol-target weight (Kaufman ch.23).
+
+    Returns ``(notional, reason_suffix)``. This is *entry sizing*: it sets the buy
+    size from current volatility, but does not rebalance the position daily as vol
+    drifts (the backtest does — full live rebalancing needs position-aware brokers,
+    a ``TODO(rebalance)``). A weight of ~0 (vol unmeasurable / a shock) ⇒ $0, which
+    the caller treats as "skip this entry".
+    """
+    from energy_trader.sizing import vol_target_weight
+
+    weight = float(
+        vol_target_weight(close, settings.vol_window, settings.vol_target_annual,
+                          settings.vol_max_leverage).iloc[-1]
+    )
+    notional = round(settings.default_notional * weight, 2)
+    suffix = f" · voltgt {weight:.2f}× (target {settings.vol_target_annual:.0%})"
+    return notional, suffix
+
+
 def analyze(data: dict[str, pd.DataFrame], settings: Settings) -> list[Order]:
     """Turn per-asset price history into a list of intended orders (long-biased)."""
     orders: list[Order] = []
@@ -60,13 +80,26 @@ def analyze(data: dict[str, pd.DataFrame], settings: Settings) -> list[Order]:
         if action == "hold":
             continue
 
+        notional = settings.default_notional
+        reason = f"SMA{settings.fast_window}/{settings.slow_window} crossover"
+        # Vol-target only the entry size; a sell flattens the position in full.
+        if action == "buy" and settings.vol_target_live:
+            notional, suffix = _vol_target_notional(df["Close"], settings)
+            reason += suffix
+            logger.info("%s vol-target sizing → $%.2f (from $%.2f)", symbol,
+                        notional, settings.default_notional)
+            if notional < 1.0:
+                logger.info("%s vol weight ~0 (high vol / warmup); skipping entry.",
+                            symbol)
+                continue
+
         orders.append(
             Order(
                 symbol=symbol,
                 side=action,
-                notional=settings.default_notional,
+                notional=notional,
                 extended_hours=settings.extended_hours,
-                reason=f"SMA{settings.fast_window}/{settings.slow_window} crossover",
+                reason=reason,
             )
         )
 

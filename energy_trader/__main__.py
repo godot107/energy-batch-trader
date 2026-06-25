@@ -47,10 +47,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--strategy",
-        choices=["sma", "pairs"],
+        choices=["sma", "pairs", "carry", "voltgt"],
         default="sma",
-        help="Backtest strategy: 'sma' crossover (default) or 'pairs' "
-        "(USO/XLE spread mean reversion; needs exactly 2 assets).",
+        help="Backtest strategy: 'sma' crossover (default), 'pairs' (USO/XLE "
+        "spread mean reversion; needs exactly 2 assets), 'carry' (USO roll-yield "
+        "vs SMA vs buy-and-hold; needs USO + EIA_API_KEY), or 'voltgt' (SMA "
+        "before/after volatility-targeted sizing).",
+    )
+    parser.add_argument(
+        "--plot",
+        action="store_true",
+        help="Save backtest charts (equity, drawdown, carry regime) as PNGs. "
+        "Research-only; needs matplotlib.",
+    )
+    parser.add_argument(
+        "--plot-dir",
+        default="plots",
+        metavar="DIR",
+        help="Where --plot writes PNGs (default: ./plots).",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Debug logging."
@@ -70,7 +84,8 @@ def main(argv: list[str] | None = None) -> int:
         settings.assets = args.assets
 
     if args.backtest:
-        return _run_backtest(settings, args.years, args.strategy)
+        return _run_backtest(settings, args.years, args.strategy,
+                             plot=args.plot, plot_dir=args.plot_dir)
 
     if args.paper:
         settings.broker = "alpaca_paper"
@@ -86,7 +101,8 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _run_backtest(settings, years: float, strategy: str) -> int:
+def _run_backtest(settings, years: float, strategy: str, *,
+                  plot: bool = False, plot_dir: str = "plots") -> int:
     # Backtests need far more history than the ~200-bar live lookback.
     from energy_trader.data import extract_market_data
 
@@ -116,11 +132,97 @@ def _run_backtest(settings, years: float, strategy: str) -> int:
             print(format_sweep(sweep_pairs(data, bt_settings), bt_settings))
         return 0
 
+    if strategy == "carry":
+        from energy_trader.backtest import compare_uso_carry, format_comparison
+        from energy_trader.eia import fetch_wti_spot
+
+        if "USO" not in data:
+            print("Carry strategy needs USO in the universe (--asset USO).")
+            return 2
+        wti = fetch_wti_spot(bt_settings, length=bt_settings.lookback_days * 2 + 60)
+        if wti.empty:
+            print("Carry needs WTI spot from EIA — set EIA_API_KEY (see RUNBOOK).")
+            return 2
+        results = compare_uso_carry(data["USO"]["Close"], wti, bt_settings)
+        title = (
+            f"USO: SMA baseline vs carry-filtered SMA vs Buy-and-Hold  "
+            f"(carry {bt_settings.carry_window}d/band {bt_settings.carry_band:.1%}, "
+            f"long-only, fee {0.0005:.2%}/trade)"
+        )
+        print("\n=== Carry-filter Backtest ===")
+        print(format_comparison(results, title))
+        if plot:
+            from pathlib import Path
+
+            from energy_trader.plots import (
+                equity_curves,
+                plot_carry_regime,
+                plot_equity_drawdown,
+            )
+
+            out = Path(plot_dir)
+            curves = equity_curves(results, bench_close=data["USO"]["Close"])
+            p1 = plot_equity_drawdown(
+                curves, path=out / "carry_equity_drawdown.png",
+                title="USO — SMA vs SMA+carry vs Buy-and-Hold")
+            p2 = plot_carry_regime(
+                data["USO"]["Close"], wti, bt_settings.carry_window,
+                bt_settings.carry_band, path=out / "carry_regime.png")
+            print(f"\nPlots: {p1}  {p2}")
+        return 0
+
+    if strategy == "voltgt":
+        from energy_trader.backtest import compare_vol_target, format_comparison
+
+        syms = [s for s in bt_settings.assets if s in data]
+        for sym in syms:
+            results = compare_vol_target(sym, data[sym]["Close"], bt_settings)
+            if not results:
+                continue
+            title = (
+                f"{sym}: SMA vs SMA+vol-target  (target "
+                f"{bt_settings.vol_target_annual:.0%}, {bt_settings.vol_window}d, "
+                f"cap {bt_settings.vol_max_leverage:.1f}x, fee {0.0005:.2%}/trade)"
+            )
+            print(f"\n=== Vol-targeting (before/after) — {sym} ===")
+            print(format_comparison(results, title))
+            if plot:
+                from pathlib import Path
+
+                from energy_trader.plots import (
+                    equity_curves,
+                    plot_equity_drawdown,
+                    plot_vol_target,
+                )
+
+                out = Path(plot_dir)
+                curves = equity_curves(results, bench_close=data[sym]["Close"])
+                p1 = plot_equity_drawdown(
+                    curves, path=out / f"voltgt_{sym}.png",
+                    title=f"{sym} — SMA vs SMA+vol-target vs Buy-and-Hold")
+                p2 = plot_vol_target(data[sym]["Close"], bt_settings,
+                                     path=out / f"voltgt_{sym}_mechanism.png")
+                print(f"Plots: {p1}  {p2}")
+        return 0
+
     from energy_trader.backtest import format_report, run_backtest
 
     results = run_backtest(data, bt_settings)
     print("\n=== Backtest Result ===")
     print(format_report(results, bt_settings))
+    if plot:
+        from pathlib import Path
+
+        from energy_trader.plots import equity_curves, plot_equity_drawdown
+
+        out = Path(plot_dir)
+        for sym, res in results.items():
+            curves = equity_curves([res], bench_close=data[sym]["Close"])
+            p = plot_equity_drawdown(
+                curves, path=out / f"sma_{sym}.png",
+                title=f"{sym} — SMA({bt_settings.fast_window}/"
+                f"{bt_settings.slow_window}) vs Buy-and-Hold")
+            print(f"Plot: {p}")
     return 0
 
 

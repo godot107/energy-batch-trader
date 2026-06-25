@@ -24,6 +24,8 @@ apache-airflow==2.9.1
 # --- Backtesting / research only (not a runtime dep of the daily job) ---
 vectorbt==0.26.0
 statsmodels==0.14.6  # pairs cointegration test (lazy import; pulls scipy)
+matplotlib==3.9.2  # backtest plots (lazy import in plots.py; --plot flag)
+jupyterlab==4.2.5  # research notebook (notebooks/research.ipynb)
 
 # --- Legacy unofficial execution path (superseded by the official MCP) ---
 robin_stocks==3.3.0

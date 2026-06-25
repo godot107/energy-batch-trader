@@ -11,12 +11,17 @@ python -m energy_trader                 # dry-run (default, safe)
 python -m energy_trader --paper         # Phase 2: Alpaca paper trading (no real money)
 python -m energy_trader --backtest      # backtest the strategy over history
 python -m energy_trader --backtest --strategy pairs --asset USO --asset XLE  # pairs
+python -m energy_trader --backtest --strategy carry --asset USO  # carry vs SMA vs B&H (needs EIA_API_KEY)
+python -m energy_trader --backtest --strategy carry --asset USO --plot  # + save equity/drawdown/regime PNGs to plots/
+python -m energy_trader --backtest --strategy voltgt --asset USO --plot  # SMA before/after vol-targeted sizing (Kaufman ch.23)
 python -m energy_trader --live          # Phase 3: arms real orders; needs ROBINHOOD_MCP_TOKEN
 .venv/bin/python -m py_compile energy_trader/*.py energy_trader/brokers/*.py dags/*.py
+jupyter lab notebooks/research.ipynb    # interactive research narrative (reproduces all findings + charts)
 ```
 
 Core runtime needs only `pandas numpy requests python-dotenv`. The full
-`requirements.txt` adds Airflow, vectorbt, Alpaca, and LLM SDKs.
+`requirements.txt` adds Airflow, vectorbt, Alpaca, LLM SDKs, and the research-only
+viz stack (matplotlib, jupyterlab — see `plots.py` / `notebooks/`).
 
 ## Key decisions / constraints
 
@@ -32,10 +37,25 @@ Core runtime needs only `pandas numpy requests python-dotenv`. The full
   signal (`strategy.py`) is plain pandas and deterministic. The built-in
   `--backtest` harness (`backtest.py`) reuses that same signal; vectorbt stays
   optional for offline parameter sweeps.
+- **Live position sizing = volatility targeting** (Kaufman ch.23, `sizing.py`):
+  `analyze()` scales each buy's notional by `vol_target_annual / realized_vol`
+  (capped at `vol_max_leverage`; toggle `vol_target_live`). This is *entry sizing* —
+  it doesn't rebalance the held position daily as the backtest does; full
+  rebalancing needs position-aware brokers (`TODO(rebalance)`).
+- **Cadence: once per trading day, evening ET.** The DAG fires `0 18` in
+  `America/New_York` (6 PM ET, ~2h after the 4 PM close, final daily bars in). The
+  tz-aware `start_date` is load-bearing — a naive datetime would mean 18:00 UTC
+  (pre-close). Not holiday-aware yet; the pipeline degrades to "hold" on a stale bar.
 - **Research tooling is read-only and separate from live.** `--strategy pairs`
   (`pairs.py`) is a market-neutral spread strategy with a `statsmodels`
   cointegration gate (lazy import) + pair sweep; `roll.py` reports USO's
-  roll-decay vs WTI spot (EIA). Both are analysis only — they never place orders.
+  roll-decay vs WTI spot (EIA); `--strategy carry` (`carry.py`) turns that
+  roll-yield into a signal and benchmarks it against SMA + buy-and-hold. All are
+  analysis only — they never place orders. (Backtests use split/dividend-adjusted
+  Alpaca bars — `Adjustment.ALL` in `data.py`; raw bars corrupt USO across its
+  2020 reverse split.) **Visualization is research-only too:** `plots.py` (lazy
+  matplotlib, headless PNGs via `--plot`) and `notebooks/research.ipynb` reuse the
+  same `BacktestResult.equity` curves — never imported by the live pipeline.
 - **Brokers are pluggable** (`brokers/`): `DryRunBroker` (Phase 1),
   `AlpacaPaperBroker` (Phase 2, paper — no real money), and `RobinhoodMCPBroker`
   (Phase 3, live). Default everything to **dry-run**; `--paper` selects Alpaca
