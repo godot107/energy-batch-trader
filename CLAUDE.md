@@ -46,6 +46,11 @@ viz stack (matplotlib, jupyterlab — see `plots.py` / `notebooks/`).
   `America/New_York` (6 PM ET, ~2h after the 4 PM close, final daily bars in). The
   tz-aware `start_date` is load-bearing — a naive datetime would mean 18:00 UTC
   (pre-close). Not holiday-aware yet; the pipeline degrades to "hold" on a stale bar.
+- **The deployed scheduler is GitHub Actions** (`.github/workflows/eod-paper.yml`),
+  not Airflow — always-on, zero infra. Cron `0 22 * * 1-5` (UTC; = 6 PM EDT / 5 PM
+  EST, both post-close — GH cron has no DST). Installs `requirements-runtime.txt`
+  (lean: no Airflow/viz), runs `--paper`, keys via repo secrets. `workflow_dispatch`
+  allows manual runs. The DAG/CLI/Actions all just call the same `run_pipeline()`.
 - **Research tooling is read-only and separate from live.** `--strategy pairs`
   (`pairs.py`) is a market-neutral spread strategy with a `statsmodels`
   cointegration gate (lazy import) + pair sweep; `roll.py` reports USO's

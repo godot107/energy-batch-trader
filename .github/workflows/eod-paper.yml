@@ -1,0 +1,46 @@
+name: EOD paper trade
+
+# Cloud scheduler for the once-daily EOD pipeline — same run_pipeline() the CLI
+# and Airflow DAG call, so no logic lives here. Runs Alpaca PAPER (no real money).
+on:
+  schedule:
+    # GitHub cron is UTC-only (no daylight saving). 22:00 UTC = 6 PM EDT (summer)
+    # / 5 PM EST (winter) — both safely after the 4 PM ET equity close.
+    - cron: "0 22 * * 1-5"
+  workflow_dispatch: {}  # also run on demand from the Actions tab
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eod-paper
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-runtime.txt
+
+      - name: Install runtime deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-runtime.txt
+
+      - name: Run EOD pipeline (Alpaca paper)
+        env:
+          # Set these as repo secrets: Settings → Secrets and variables → Actions.
+          # Missing optional ones degrade gracefully (EIA gate off, no Telegram).
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m energy_trader --paper

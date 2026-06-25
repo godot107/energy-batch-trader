@@ -1,0 +1,9 @@
+# Lean runtime deps for the EOD pipeline (CLI / cloud scheduler) — no Airflow,
+# backtest, viz, or LLM extras. Used by .github/workflows/eod-paper.yml so the
+# scheduled job installs in seconds. Pins mirror requirements.txt.
+pandas==2.2.2
+numpy==1.26.4
+requests==2.31.0
+python-dotenv==1.0.1
+alpaca-py==0.32.0  # market data + --paper execution (TradingClient)
+pytz==2024.1  # alpaca-py imports it directly
