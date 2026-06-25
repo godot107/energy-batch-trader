@@ -34,6 +34,7 @@ def extract_market_data(settings: Settings) -> dict[str, pd.DataFrame]:
         return {s: _mock_bars(s, settings.lookback_days) for s in settings.assets}
 
     try:
+        from alpaca.data.enums import Adjustment
         from alpaca.data.historical import StockHistoricalDataClient
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame
@@ -48,6 +49,10 @@ def extract_market_data(settings: Settings) -> dict[str, pd.DataFrame]:
             symbol_or_symbols=settings.assets,
             timeframe=TimeFrame.Day,
             start=start,
+            # Split+dividend adjusted: without this, raw bars show USO's 2020
+            # 1-for-8 reverse split as a fake +745% day that corrupts every
+            # backtest, the roll-decay diagnostic, and the carry signal.
+            adjustment=Adjustment.ALL,
         )
         bars = client.get_stock_bars(request).df
         out: dict[str, pd.DataFrame] = {}
