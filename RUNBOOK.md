@@ -176,6 +176,42 @@ Knobs (`config.py`): `risk_fraction`, `default_notional`, `vol_target_annual`,
 `vol_window`, `vol_max_leverage`, `vol_target_live`. Kelly/VaR are deliberately
 *not* used — too aggressive / heavyweight for a small, paper-first account.
 
+### Funding & withdrawals (how money moves in/out)
+
+Cash moves on **bank rails, manually** — the trading API/MCP deliberately *cannot*
+move money to/from your bank (gated behind the broker app for fraud/regulatory
+reasons). **The bot trades; you fund and withdraw by hand.**
+
+`account_equity = cash + position market value`. The constraint: you can only
+**withdraw settled, *available* cash** — not money tied up in open positions or in
+trades that haven't settled.
+
+- **Deposit:** ACH (free, ~1–3 business days) or wire (same-day, fee). Newly
+  deposited funds are often tradable quickly but **held ~5 business days before
+  withdrawal** (ACH can be reversed).
+- **Settlement: T+1.** After a **sell**, proceeds are unsettled for ~1 business day
+  before they're withdrawable. In a **cash account** (our setup — no margin),
+  trading unsettled proceeds triggers good-faith / free-riding violations.
+- **Withdraw earnings:** realized gains sitting as cash are withdrawable once
+  settled; **unrealized** gains require *selling first*, then T+1, then withdraw.
+- **Tax (US):** the withdrawal itself isn't taxable — the **realized trades** are
+  (a brokerage is an after-tax account), whether or not you ever withdraw.
+
+**Feedback into sizing.** Because sizing reads live equity (`Broker.equity()`) each
+run, a deposit raises equity → bigger positions next run; a withdrawal lowers it →
+smaller positions — the fixed-fractional **compounding** loop (Kaufman, *Trading
+Systems and Methods*, p.1085, 1105). Sweeping profits out de-compounds but shrinks
+the blast radius (the "keep the funded balance small" ethos); Kaufman's alternative
+is a **reserve** bucket redistributed periodically rather than reinvested each day
+(p.1106). Caveat: a withdrawal while positions are open can starve the next entry's
+buying power.
+
+**Per broker.** *Alpaca paper* — no real money; simulated cash set/reset in the
+dashboard (that's the equity sizing reads). *Alpaca live* — ACH/wire in the
+dashboard. *Robinhood Agentic (Phase 3)* — link a bank and fund **in the Robinhood
+app**; the Agentic sub-account is the isolated, deliberately-small balance that *is*
+your blast radius. The MCP only trades against whatever you've funded.
+
 ## 3. Telegram notifications
 
 1. Message `@BotFather` → `/newbot` → copy the HTTP API token → `TELEGRAM_BOT_TOKEN`.
