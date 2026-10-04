@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from energy_trader.brokers.base import Broker, Order, OrderResult
+from energy_trader.brokers.base import Broker, Order, OrderResult, Position
 from energy_trader.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -80,6 +80,17 @@ class AlpacaPaperBroker(Broker):
             return float(self.client.get_account().equity)
         except Exception as exc:  # noqa: BLE001 - degrade to fixed notional
             logger.warning("Could not fetch Alpaca account equity (%s).", exc)
+            return None
+
+    def positions(self) -> dict[str, Position] | None:
+        """Paper-account holdings for rebalancing; ``None`` if unreadable."""
+        try:
+            return {
+                p.symbol: Position(p.symbol, float(p.qty), float(p.market_value))
+                for p in self.client.get_all_positions()
+            }
+        except Exception as exc:  # noqa: BLE001 - degrade to crossover-only orders
+            logger.warning("Could not fetch Alpaca positions (%s).", exc)
             return None
 
     def place(self, order: Order) -> OrderResult:

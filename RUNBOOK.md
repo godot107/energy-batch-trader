@@ -165,9 +165,21 @@ notional = risk_fraction × account_equity     # %-of-equity base   (Kaufman p.1
   (\$100) — so sizing scales with the real account, not a hardcoded number.
 - **Vol scaling** = `vol_target_annual / realized_vol`, capped at `vol_max_leverage`
   (1.0 = long-only, no margin), so the position shrinks as volatility rises.
-- Applied to **entries** (buys). A sell flattens, so it uses the base notional only.
-  Full daily rebalancing of held positions is a `TODO(rebalance)` (needs a
-  position-aware broker).
+> **Default live strategy is now the strategic allocation** (`allocation.py`) —
+> see "Strategic allocation" below. Everything in this section applies to
+> `EOD_STRATEGY=trend`.
+
+- **Daily rebalancing** (`rebalance.py`, position-aware brokers — Alpaca paper):
+  every run computes a *target* per symbol — `0` when fast SMA ≤ slow SMA, else
+  the notional above — reads what's actually held (`Broker.positions()`), and
+  trades only the difference, and only when it exceeds the **no-trade band**
+  (`rebalance_band`, default 20% of target; min `rebalance_min_trade` \$5). Exits
+  sell the **full held quantity**. This mirrors the backtest (which re-sizes
+  `in_trend × vol_weight` daily) and self-heals missed runs / partial fills.
+  Synthetic (mock) bars never trigger trades.
+- Brokers that can't report holdings (dry-run; Robinhood MCP until its schema is
+  verified) fall back to **crossover-day orders**: a buy is a vol-targeted entry,
+  a sell uses the base notional.
 
 Every order's `reason` records the math, e.g.
 `SMA5/20 crossover · 10% of $1,000 equity × voltgt 0.70 (target 20%)`.
@@ -175,6 +187,34 @@ Every order's `reason` records the math, e.g.
 Knobs (`config.py`): `risk_fraction`, `default_notional`, `vol_target_annual`,
 `vol_window`, `vol_max_leverage`, `vol_target_live`. Kelly/VaR are deliberately
 *not* used — too aggressive / heavyweight for a small, paper-first account.
+
+### Strategic allocation (default: `EOD_STRATEGY=allocation`)
+
+Fixed energy mix — **50% XLE / 30% USO / 20% cash** (`target_weights`) — held,
+not timed (research: the SMA trailed buy-and-hold).
+
+| When | What happens |
+|---|---|
+| Days 1–7 of Jan/Apr/Jul/Oct, some weight > 3pp off (`alloc_tolerance`) | **Quarterly rebalance**: every symbol traded back to target (sells first) |
+| Any day, cash above 20% by ≥ \$20 (`deploy_min_cash`) | **Deploy new cash**, buy-only, into underweights by shortfall |
+| Otherwise | Nothing (summary shows weights + next rebalance date) |
+
+The 7-day window gives several runs a chance if one fails; the tolerance stops
+re-trading once on target — stateless, no "last rebalanced" file. Buy-only
+deposits keep new money working between quarters without realizing gains.
+
+Backtest 2016-01 → 2026-10 (adjusted bars, \$1k start + \$100/mo, scratch sim):
+50/30/20 quarterly **CAGR +9.0%, vol 23.7%, max DD −57%** (2020) vs never
+rebalanced +8.7% / −57%, XLE-only +11.3% / −67%. USO carries roll decay (`roll.py`).
+
+**Deposits** (plan: ~\$100/month, by hand — see "Funding & withdrawals") need no
+config: they arrive as cash and the next run deploys them buy-only. Alpaca's
+paper Trading API has no deposit endpoint (and paper accounts can't be reset in
+place), so deposits are **not simulated on paper** — the paper run exercises the
+quarterly rebalance only.
+
+Preview any day with `python -m energy_trader` — with Alpaca keys, dry-run reads
+the paper account's equity/positions (read-only) and shows tonight's orders.
 
 ### Funding & withdrawals (how money moves in/out)
 

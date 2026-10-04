@@ -38,6 +38,15 @@ class Order:
 
 
 @dataclass
+class Position:
+    """A held position, as the broker reports it (long-only: ``qty`` > 0)."""
+
+    symbol: str
+    qty: float
+    market_value: float
+
+
+@dataclass
 class OrderResult:
     order: Order
     status: str  # "submitted" | "dry_run" | "rejected" | "error"
@@ -62,6 +71,15 @@ class Broker(ABC):
         """
         return None
 
+    def positions(self) -> dict[str, Position] | None:
+        """Currently held positions, keyed by symbol, for daily rebalancing.
+
+        ``None`` means the broker can't report holdings (dry-run, or an unverified
+        live schema) — the pipeline then falls back to crossover-event orders.
+        An empty dict means "known to be flat".
+        """
+        return None
+
     @abstractmethod
     def place(self, order: Order) -> OrderResult:
         """Execute (or simulate) the order."""
@@ -79,7 +97,7 @@ def get_broker(dry_run: bool, settings: Settings) -> Broker:
     if target == "dry_run":
         from energy_trader.brokers.dry_run import DryRunBroker
 
-        return DryRunBroker()
+        return DryRunBroker(settings)
     if target in ("alpaca_paper", "alpaca"):
         from energy_trader.brokers.alpaca_paper import AlpacaPaperBroker
 

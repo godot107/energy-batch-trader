@@ -41,9 +41,21 @@ viz stack (matplotlib, jupyterlab — see `plots.py` / `notebooks/`).
   ch.23; `strategy._size_entry`, `sizing.py`): base = `risk_fraction × account_equity`
   (read live via `Broker.equity()`, else the fixed `default_notional`), then ×
   `vol_target_annual / realized_vol` (capped at `vol_max_leverage`; toggle
-  `vol_target_live`). Entry sizing only — held positions aren't rebalanced daily as
-  the backtest is; full rebalancing needs position-aware brokers (`TODO(rebalance)`).
-  Full reasoning + references in RUNBOOK "Position sizing".
+  `vol_target_live`). Full reasoning + references in RUNBOOK "Position sizing".
+- **Live strategy = strategic allocation** (`allocation.py`, `EOD_STRATEGY=allocation`,
+  the default): 50% XLE / 30% USO / 20% cash (`target_weights`). Full rebalance
+  (sells + buys) only in days 1–7 of Jan/Apr/Jul/Oct and only if a weight is >3pp
+  off (`alloc_tolerance`) — stateless calendar+tolerance. Any day, excess cash
+  (deposits) ≥ `deploy_min_cash` is invested **buy-only** into underweights.
+  Deposits (~$100/mo, by hand) need no config — they're just new cash. Alpaca
+  paper has **no deposit API**, so deposits aren't simulated on paper. Needs `Broker.positions()`; trades off broker market values (no bars).
+  Dry-run reads the Alpaca paper account read-only when keys exist (preview).
+- **Trend strategy** (`EOD_STRATEGY=trend`) — **daily rebalancing** (`rebalance.py`) when the broker reports holdings
+  (`Broker.positions()`; Alpaca does): target = in-trend (fast SMA > slow) × the
+  sizing above, trade only `target − held` when drift > `rebalance_band` (20% of
+  target). Exits sell the full held qty. Mirrors the backtest's daily `pos`.
+  Brokers returning `None` (dry-run, Robinhood until verified) fall back to
+  crossover-day orders (`strategy.analyze`). Synthetic/mock bars never trade.
 - **Cadence: once per trading day, evening ET.** The DAG fires `0 18` in
   `America/New_York` (6 PM ET, ~2h after the 4 PM close, final daily bars in). The
   tz-aware `start_date` is load-bearing — a naive datetime would mean 18:00 UTC

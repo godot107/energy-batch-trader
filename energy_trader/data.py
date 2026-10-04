@@ -22,7 +22,9 @@ def _mock_bars(symbol: str, periods: int) -> pd.DataFrame:
     dates = pd.date_range(end=pd.Timestamp.now().normalize(), periods=periods)
     drift = np.linspace(70, 85, periods)
     close = drift + rng.normal(0, 2, periods)
-    return pd.DataFrame({"Close": close}, index=dates)
+    df = pd.DataFrame({"Close": close}, index=dates)
+    df.attrs["synthetic"] = True  # never rebalance a real account on fake bars
+    return df
 
 
 def extract_market_data(settings: Settings) -> dict[str, pd.DataFrame]:

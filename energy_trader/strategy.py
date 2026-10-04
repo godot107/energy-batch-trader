@@ -71,9 +71,9 @@ def _size_entry(
        concentrates risk in the most volatile name (ch.23, p.1071), rescaled
        toward a target volatility (p.1068).
 
-    Entry sizing only — it doesn't rebalance the held position as vol drifts (the
-    backtest does; full live rebalancing needs position-aware brokers,
-    ``TODO(rebalance)``). A weight of ~0 (a shock / warmup) ⇒ ~$0 ⇒ skip the entry.
+    Also the daily *target* for :mod:`energy_trader.rebalance` (position-aware
+    brokers), which re-sizes held positions toward it as vol drifts, like the
+    backtest. A weight of ~0 (a shock / warmup) ⇒ ~$0 ⇒ skip the entry.
     """
     base, reason = _base_notional(settings, account_equity)
     notional = base

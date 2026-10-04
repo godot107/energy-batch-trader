@@ -32,6 +32,21 @@ class Settings:
     # --- Universe ---------------------------------------------------------
     assets: list[str] = field(default_factory=lambda: ["USO", "XLE"])
 
+    # --- Live strategy ----------------------------------------------------
+    #   "allocation" (default): fixed target weights, quarterly rebalance,
+    #       monthly deposits deployed buy-only (allocation.py).
+    #   "trend": SMA-crossover in/out + vol-targeted sizing (rebalance.py).
+    strategy: str = field(default_factory=lambda: _env("EOD_STRATEGY", "allocation"))
+
+    # --- Strategic allocation (allocation.py) -----------------------------
+    # Target weight per symbol; the remainder is held as cash (here 20%).
+    target_weights: dict[str, float] = field(
+        default_factory=lambda: {"XLE": 0.50, "USO": 0.30}
+    )
+    rebalance_window_days: int = 7  # rebalance runs in days 1–7 of Jan/Apr/Jul/Oct
+    alloc_tolerance: float = 0.03  # …only if some weight is > 3pp off target
+    deploy_min_cash: float = 20.0  # invest excess cash once it's at least this
+
     # --- Strategy params --------------------------------------------------
     fast_window: int = 5
     slow_window: int = 20
@@ -56,9 +71,16 @@ class Settings:
     vol_target_annual: float = 0.20  # target annualized volatility
     vol_window: int = 20  # lookback (days) for realized vol
     vol_max_leverage: float = 1.0  # cap (1.0 = long-only cash, no margin)
-    # Live: scale each buy's notional by the vol-target weight (entry sizing).
-    # Full daily rebalancing would need position-aware brokers — see analyze().
+    # Live: scale each target position by the vol-target weight.
     vol_target_live: bool = True
+
+    # --- Daily rebalancing (position-aware brokers; see rebalance.py) ------
+    # Each day the held position is moved toward its target (in-trend ×
+    # risk_fraction × equity × vol weight), but only when it has drifted more
+    # than `rebalance_band` of the target — a no-trade band so small daily vol
+    # wiggles don't churn fees. Trades under `rebalance_min_trade` $ are skipped.
+    rebalance_band: float = 0.20
+    rebalance_min_trade: float = 5.0
 
     # --- Execution / position sizing -------------------------------------
     # Energy EOD orders are queued after the close for the next session, so
