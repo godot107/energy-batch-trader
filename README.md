@@ -5,6 +5,13 @@ from any orchestrator**, so the same `run_pipeline()` runs from the CLI today an
 drops into Azure Functions later with no logic changes. Order execution targets
 Robinhood's **official Agentic Trading MCP** — but paper-traded on Alpaca first.
 
+> **A personal learning project, not an edge.** Built in Houston — the "energy
+> capital" — to learn how energy markets actually behave by trading them
+> end-to-end. The honest result: over 20 years nothing here beat holding the
+> S&P 500. What I learned is in **[blog.md](blog.md)**.
+>
+> *Not financial advice. Paper trading by default; any live use is at your own risk.*
+
 ## How it works
 
 A single daily pass. The risk gate runs **first** (cheap to halt, expensive to
@@ -14,11 +21,12 @@ trade into a shock), then data → signal → execution → alert.
 flowchart TD
     G{Anomaly gate<br/>risk signals} -- shock --> H[Halt]
     G -- clear --> X[Extract EOD bars<br/>USO / XLE · Alpaca, adjusted]
-    X --> S[SMA crossover signal<br/>deterministic, no LLM]
-    S -- buy --> V[Vol-target sizing<br/>Kaufman ch.23]
-    V --> B[Broker<br/>dry-run · Alpaca paper · Robinhood]
-    S -- sell --> B
-    S -- no cross --> N[No orders]
+    X --> F[SMA50/200 trend filter<br/>per symbol, deterministic]
+    F --> P["Target holdings<br/>70% XLE · 10% USO · 20% cash<br/>(downtrend ⇒ that slice to cash)"]
+    A[Broker equity + positions] --> P
+    P --> R{Trade today?}
+    R -- "trend flip · quarterly drift · new cash" --> B[Broker<br/>dry-run · Alpaca paper · Robinhood]
+    R -- on target --> N[No orders]
     B --> T[Daily Telegram summary]
     N --> T
     H --> T
@@ -26,14 +34,20 @@ flowchart TD
 
 1. **Anomaly gate** — halts the run if a risk signal fires (see below). The only
    place an LLM is *ever* permitted, and only to stop trading — never to trade.
-2. **Extract** EOD bars for the energy universe (USO/XLE) via Alpaca (synthetic
-   fallback if keys are absent).
-3. **Analyze** — a deterministic SMA-crossover signal produces intended orders,
-   **vol-target sized** (Kaufman ch.23 — position scaled by `target/realized vol`
-   so it shrinks into shocks). No LLM in the trade decision.
+2. **Extract** EOD bars for USO/XLE via Alpaca (adjusted). Synthetic fallback bars
+   exist for a fresh checkout but **never trigger a trade**.
+3. **Plan** (`allocation.py`, the default `EOD_STRATEGY=allocation`) — a strategic
+   mix of **70% XLE / 10% USO / 20% cash**. A symbol whose 50-day SMA falls below
+   its 200-day steps aside to cash until it crosses back. Trades only on a trend
+   flip, a quarterly rebalance (days 1–7 of Jan/Apr/Jul/Oct, if >3pp off), or new
+   cash (deposits, invested buy-only). Compared against the broker's *actual*
+   holdings, so missed runs self-heal. No LLM in the trade decision.
 4. **Execute** — orders go to a pluggable broker (dry-run, Alpaca paper, or the
-   Robinhood MCP). A **daily Telegram summary** is sent every run — signals and any
-   orders — so you get a ping even on all-hold days.
+   Robinhood MCP). A **daily Telegram summary** — equity, weights vs target, trend
+   state, next rebalance — is sent every run, trade or not.
+
+The original SMA(5/20) crossover with vol-targeted sizing is still available as
+`EOD_STRATEGY=trend` (`rebalance.py`), now position-aware.
 
 ## Anomaly gate (the risk gate)
 
@@ -94,9 +108,14 @@ Two more research strategies: `--strategy carry` (`carry.py`) tests USO's
 drawdown, regime, and vol-target charts to `plots/` (energy-shock windows shaded);
 `notebooks/research.ipynb` reproduces the whole analysis with inline charts.
 
-> **Headline:** on clean data, plain SMA **beats** buy-and-hold on USO (it dodges
-> contango drawdowns), and vol-targeting roughly halves the drawdown. Carry is a
-> regime diagnostic, not an edge. See **RUNBOOK §2** for the full, honest findings.
+> **Headline (20 years, 2006–2026 — `longrun.py`, notebook §5):** nothing energy-based
+> beat **SPY buy-and-hold (+11%/yr)**. USO lost 98% peak-to-trough to contango roll
+> decay. The first live mix (50/30/20) made +3.6%/yr with a −70% drawdown; the live
+> **70/10/20 + 50/200 filter** makes +6.6%/yr with a −27% drawdown. The 10-year
+> Alpaca window (2016+) flattered everything — vol-targeting's "win" there lowered
+> return in every SMA pair over 20 years. Carry is a regime diagnostic, not an edge.
+
+![20 years: energy strategies vs SPY](docs/img/longrun_20y.png)
 
 ## Execution: Robinhood official Agentic Trading MCP
 
@@ -161,12 +180,15 @@ energy_trader/            # framework-agnostic pipeline (the actual logic)
   config.py  data.py      #   settings; Alpaca extract (+ synthetic fallback)
   anomaly.py              #   risk gate: aggregates halt signals
   eia.py                  #   EIA inventory-shock signal (deterministic)
-  strategy.py             #   SMA crossover + live vol-target sizing (single source)
+  allocation.py           #   LIVE default: 70/10/20 + 50/200 filter, quarterly rebalance
+  rebalance.py            #   EOD_STRATEGY=trend: position-aware SMA rebalancing
+  strategy.py             #   SMA crossover + vol-target sizing (single source)
   sizing.py               #   volatility-targeted position sizing (Kaufman ch.23)
   backtest.py             #   backtest harness — sma / carry / voltgt (--backtest)
   carry.py                #   USO roll-yield (carry) signal + regime filter
   pairs.py                #   market-neutral spread strategy + cointegration sweep
   roll.py                 #   USO roll-decay (contango) vs WTI-spot diagnostic
+  longrun.py              #   research-only 20y reality check (yfinance, back to 2006)
   plots.py                #   research-only backtest charts (--plot; lazy matplotlib)
   notify.py               #   Telegram alerts (daily summary)
   brokers/                #   pluggable execution
@@ -175,6 +197,8 @@ energy_trader/            # framework-agnostic pipeline (the actual logic)
     robinhood_mcp.py      #     official Robinhood Agentic Trading MCP (Phase 3)
   __main__.py             #   CLI: python -m energy_trader
 notebooks/research.ipynb  # reproducible research narrative (inline charts)
+blog.md                   # lessons learned (the write-up)
+docs/img/                 # charts referenced by README / blog
 .github/workflows/        # GitHub Actions cloud scheduler (eod-paper.yml)
 requirements-runtime.txt  # lean deps for the scheduled job (no Airflow/viz)
 dags/energy_eod_dag.py    # thin Airflow DAG -> calls run_pipeline()

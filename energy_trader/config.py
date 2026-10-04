@@ -39,10 +39,15 @@ class Settings:
     strategy: str = field(default_factory=lambda: _env("EOD_STRATEGY", "allocation"))
 
     # --- Strategic allocation (allocation.py) -----------------------------
-    # Target weight per symbol; the remainder is held as cash (here 20%).
+    # Target weight per symbol; the remainder is held as cash (here 20%). USO is
+    # a small sleeve: it bled −6%/yr over 2006–26 (contango roll decay).
     target_weights: dict[str, float] = field(
-        default_factory=lambda: {"XLE": 0.50, "USO": 0.30}
+        default_factory=lambda: {"XLE": 0.70, "USO": 0.10}
     )
+    # Slow trend filter: a symbol's weight goes to cash while SMA50 ≤ SMA200.
+    alloc_trend_filter: bool = True
+    alloc_fast: int = 50
+    alloc_slow: int = 200
     rebalance_window_days: int = 7  # rebalance runs in days 1–7 of Jan/Apr/Jul/Oct
     alloc_tolerance: float = 0.03  # …only if some weight is > 3pp off target
     deploy_min_cash: float = 20.0  # invest excess cash once it's at least this
@@ -50,7 +55,7 @@ class Settings:
     # --- Strategy params --------------------------------------------------
     fast_window: int = 5
     slow_window: int = 20
-    lookback_days: int = 200
+    lookback_days: int = 200  # ×2 calendar days fetched ⇒ ~275 bars (≥ SMA200)
 
     # --- Pairs trading (USO/XLE spread mean reversion) -------------------
     pairs_lookback: int = 60  # rolling window for hedge ratio + z-score

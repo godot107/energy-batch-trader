@@ -40,6 +40,8 @@ def _plt():
 # textbooks warn about (Edwards p.272; Swindle pp.281-282; Kaufman p.27). Shaded
 # on charts so outliers in the equity/regime curves are explained, not mysterious.
 ENERGY_CRISES: list[tuple[str, str, str]] = [
+    ("2008-07-01", "2009-02-28", "GFC / oil \\$147→\\$32"),
+    ("2014-07-01", "2015-01-31", "2014 oil crash"),
     ("2015-11-01", "2016-02-29", "OPEC/shale price war"),
     ("2018-10-01", "2018-12-31", "Q4-2018 oil selloff"),
     ("2020-03-01", "2020-05-31", "COVID / negative WTI"),
@@ -252,4 +254,53 @@ def plot_carry_regime(
     fig.savefig(path, dpi=120)
     plt.close(fig)
     logger.info("Wrote %s", path)
+    return path
+
+
+# Categorical slots 1–4 (validated light-mode palette: CVD ΔE ≥ 9, normal ≥ 22).
+# Aqua/yellow sit below 3:1 vs white, so every line is also direct-labeled.
+SERIES_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
+
+
+def plot_longrun(curves: dict[str, pd.Series], names: list[str], *,
+                 path: str | Path, title: str) -> Path:
+    """Growth of $10k (log) + drawdown for ≤4 strategies from :mod:`longrun`.
+
+    Two stacked panels sharing the date axis (one y-scale each — never dual-axis).
+    Lines are direct-labeled at their right end *and* in a legend, so identity
+    never rests on color alone.
+    """
+    plt = _plt()
+    assert len(names) <= len(SERIES_COLORS), "≤4 series; fold the rest into a table"
+    fig, (ax_e, ax_d) = plt.subplots(
+        2, 1, figsize=(11, 7), sharex=True, gridspec_kw={"height_ratios": [3, 1.3]})
+    for name, color in zip(names, SERIES_COLORS):
+        e = curves[name]
+        ax_e.plot(e.index, e.values, color=color, lw=2, label=name)
+        ax_e.annotate(f"${e.iloc[-1] / 1000:,.0f}k", (e.index[-1], e.iloc[-1]),
+                      xytext=(4, 0), textcoords="offset points", va="center",
+                      fontsize=8, color="0.2")
+        dd = e / e.cummax() - 1
+        ax_d.plot(dd.index, dd.values, color=color, lw=1.4)
+    first = next(iter(curves.values())).index
+    for ax, lab in ((ax_e, True), (ax_d, False)):
+        _shade_crises(ax, label=lab, xmin=first[0], xmax=first[-1])
+        ax.grid(alpha=0.25, lw=0.6)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+    ax_e.set_yscale("log")
+    ax_e.set_ylabel("Growth of $10k (log)")
+    ax_e.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"${v / 1000:,.0f}k"))
+    # Legend above the plot area so it never collides with the crisis labels.
+    ax_e.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncol=2, fontsize=8,
+                frameon=False)
+    fig.suptitle(title, x=0.01, ha="left", fontsize=11)
+    ax_d.set_ylabel("Drawdown")
+    ax_d.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+    fig.tight_layout()
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+    logger.info("Saved %s", path)
     return path

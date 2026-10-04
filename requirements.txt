@@ -26,6 +26,7 @@ vectorbt==0.26.0
 statsmodels==0.14.6  # pairs cointegration test (lazy import; pulls scipy)
 matplotlib==3.9.2  # backtest plots (lazy import in plots.py; --plot flag)
 jupyterlab==4.2.5  # research notebook (notebooks/research.ipynb)
+yfinance==1.7.0  # 20y history back to 2006 for longrun.py (Alpaca bars start 2016)
 
 # --- Legacy unofficial execution path (superseded by the official MCP) ---
 robin_stocks==3.3.0

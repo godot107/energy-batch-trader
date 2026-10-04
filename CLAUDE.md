@@ -43,12 +43,16 @@ viz stack (matplotlib, jupyterlab — see `plots.py` / `notebooks/`).
   `vol_target_annual / realized_vol` (capped at `vol_max_leverage`; toggle
   `vol_target_live`). Full reasoning + references in RUNBOOK "Position sizing".
 - **Live strategy = strategic allocation** (`allocation.py`, `EOD_STRATEGY=allocation`,
-  the default): 50% XLE / 30% USO / 20% cash (`target_weights`). Full rebalance
+  the default): 70% XLE / 10% USO / 20% cash (`target_weights`) + per-symbol
+  SMA50/200 trend filter (downtrend ⇒ weight 0, flips trade same day; synthetic/
+  short bars block all trading). Chosen on 20y evidence (`longrun.py`: USO −6%/yr;
+  the first 50/30/20 mix was +3.6%/yr, −70% DD). Full rebalance
   (sells + buys) only in days 1–7 of Jan/Apr/Jul/Oct and only if a weight is >3pp
   off (`alloc_tolerance`) — stateless calendar+tolerance. Any day, excess cash
   (deposits) ≥ `deploy_min_cash` is invested **buy-only** into underweights.
   Deposits (~$100/mo, by hand) need no config — they're just new cash. Alpaca
-  paper has **no deposit API**, so deposits aren't simulated on paper. Needs `Broker.positions()`; trades off broker market values (no bars).
+  paper has **no deposit API**, so deposits aren't simulated on paper. Needs
+  `Broker.positions()`; position sizes come from broker market values.
   Dry-run reads the Alpaca paper account read-only when keys exist (preview).
 - **Trend strategy** (`EOD_STRATEGY=trend`) — **daily rebalancing** (`rebalance.py`) when the broker reports holdings
   (`Broker.positions()`; Alpaca does): target = in-trend (fast SMA > slow) × the
@@ -65,6 +69,9 @@ viz stack (matplotlib, jupyterlab — see `plots.py` / `notebooks/`).
   EST, both post-close — GH cron has no DST). Installs `requirements-runtime.txt`
   (lean: no Airflow/viz), runs `--paper`, keys via repo secrets. `workflow_dispatch`
   allows manual runs. The DAG/CLI/Actions all just call the same `run_pipeline()`.
+- **`longrun.py` is the 20-year reality check** (yfinance back to 2006, research-
+  only dep): Alpaca bars start in 2016, which hides 2008 and 2014–15, so validate
+  any strategy change there first. Notebook §5 + `blog.md` cite its numbers.
 - **Research tooling is read-only and separate from live.** `--strategy pairs`
   (`pairs.py`) is a market-neutral spread strategy with a `statsmodels`
   cointegration gate (lazy import) + pair sweep; `roll.py` reports USO's

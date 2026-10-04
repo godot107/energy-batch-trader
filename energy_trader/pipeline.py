@@ -66,10 +66,11 @@ def run_pipeline(
         )
         return PipelineResult(dry_run=dry_run, halted=True, halt_reason=anomaly.reason)
 
-    # 2) Extract market data (the trend strategy only; allocation trades off the
-    #    broker's own market values, so it needs no bars).
+    # 2) Extract market data (trend strategy, or the allocation's trend filter;
+    #    allocation otherwise trades off the broker's own market values).
     trend = settings.strategy == "trend"
-    data = extract_market_data(settings) if trend else {}
+    need_bars = trend or settings.alloc_trend_filter
+    data = extract_market_data(settings) if need_bars else {}
 
     # 3) Size relative to account equity when the broker can report it (percent-of-
     #    equity, Kaufman ch.23); fall back to a fixed notional otherwise. The broker
@@ -98,7 +99,8 @@ def run_pipeline(
             headline = "Allocation needs a broker that reports equity + positions; no trades."
             logger.warning(headline)
         else:
-            plan, headline = plan_allocation(settings, equity, positions, date.today())
+            plan, headline = plan_allocation(settings, equity, positions, date.today(),
+                                             closes=data)
     elif positions is not None:
         plan = plan_rebalance(data, settings, equity, positions)
     else:

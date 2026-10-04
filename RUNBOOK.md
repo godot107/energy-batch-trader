@@ -190,11 +190,14 @@ Knobs (`config.py`): `risk_fraction`, `default_notional`, `vol_target_annual`,
 
 ### Strategic allocation (default: `EOD_STRATEGY=allocation`)
 
-Fixed energy mix — **50% XLE / 30% USO / 20% cash** (`target_weights`) — held,
-not timed (research: the SMA trailed buy-and-hold).
+Strategic energy mix — **70% XLE / 10% USO / 20% cash** (`target_weights`) —
+with a slow **SMA50/200 trend filter** per symbol (`alloc_trend_filter`,
+`alloc_fast`/`alloc_slow`): while a symbol's 50-day SMA is below its 200-day, its
+target is 0 and that slice waits in cash.
 
 | When | What happens |
 |---|---|
+| Any day a symbol's trend flips | **Down:** sell the full held qty. **Up:** buy back to target |
 | Days 1–7 of Jan/Apr/Jul/Oct, some weight > 3pp off (`alloc_tolerance`) | **Quarterly rebalance**: every symbol traded back to target (sells first) |
 | Any day, cash above 20% by ≥ \$20 (`deploy_min_cash`) | **Deploy new cash**, buy-only, into underweights by shortfall |
 | Otherwise | Nothing (summary shows weights + next rebalance date) |
@@ -203,9 +206,26 @@ The 7-day window gives several runs a chance if one fails; the tolerance stops
 re-trading once on target — stateless, no "last rebalanced" file. Buy-only
 deposits keep new money working between quarters without realizing gains.
 
-Backtest 2016-01 → 2026-10 (adjusted bars, \$1k start + \$100/mo, scratch sim):
-50/30/20 quarterly **CAGR +9.0%, vol 23.7%, max DD −57%** (2020) vs never
-rebalanced +8.7% / −57%, XLE-only +11.3% / −67%. USO carries roll decay (`roll.py`).
+Synthetic, missing, or too-short (< 200 bars) data **blocks all trading** that
+day rather than faking a trend flip.
+
+**Why this mix — 20-year evidence** (`longrun.py`, notebook §5; 2006-04 → 2026-10,
+adjusted, 1-bar lag, 0.10% cost, cash earns T-bills):
+
+| Strategy | CAGR | Max DD | Avg exposure |
+|---|---|---|---|
+| SPY buy & hold (baseline) | +11.2% | −55% | 100% |
+| USO buy & hold | −6.2% | −98% | 100% |
+| 50/30/20 quarterly (first live mix, 2026-10-03) | +3.6% | −70% | 80% |
+| 70/10/20 quarterly, no filter | +5.7% | −62% | 80% |
+| **70/10/20 + SMA50/200 filter (live)** | **+6.6%** | **−27%** | 49% |
+
+The first mix was chosen on a 2016+ backtest (+9.0%/yr), the only history Alpaca
+has, and that window hid 2008 and the 2014–15 crash. USO's contango roll decay is
+the drag, so it's now a 10% oil-price sleeve. The filter helped in both decades,
+but it lags V-shaped rebounds: in 2023–26 it made +25% vs XLE's +68%. 50/200 is
+the textbook slow default, but it was also the best of 34 SMA settings tested, so
+expect less than shown. Nothing here beat SPY.
 
 **Deposits** (plan: ~\$100/month, by hand — see "Funding & withdrawals") need no
 config: they arrive as cash and the next run deploys them buy-only. Alpaca's
